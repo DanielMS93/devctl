@@ -37,6 +37,7 @@ Progress: [███████░░░] 40%
 *Updated after each plan completion*
 
 | Phase 02-git-integration P05 | 5 min | 2 tasks | 3 files |
+| Phase 02-git-integration P06 | 2 | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -74,6 +75,8 @@ Recent decisions affecting current work:
 - [02-07] File copy failures are non-fatal warnings: worktree create succeeds even if copying repo_copy_files fails
 - [02-07] Viper SafeWriteConfig fallback handles first-run case where config file does not yet exist
 - [Phase 02-git-integration]: Selection propagated to rightPanel immediately on navigation and on every StateEvent to keep panels in sync
+- [Phase 02-git-integration]: ViewerModel is plain struct not tea.Model: drives sub-model from root.go Update() to avoid nested Bubbletea program complexity
+- [Phase 02-git-integration]: chroma quick.Highlight with terminal256/monokai: graceful degradation to plain text on highlight error
 
 ### Pending Todos
 
@@ -87,5 +90,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-05
-Stopped at: Completed 02-05-PLAN.md — RepoPanel worktree list rendering, ahead/behind badges, arrow key navigation, SelectedWorktree() accessor
+Stopped at: Checkpoint 02-06 Task 3 — waiting for human verification of inline viewer (changed files list, Enter-to-open, d/f/e/Esc)
 Resume file: None
