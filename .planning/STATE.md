@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-03-05)
 ## Current Position
 
 Phase: 2 of 6 (Git Integration) — IN PROGRESS
-Plan: 1 of 7 in current phase — COMPLETE
-Status: Phase 2 Plan 01 complete; internal/git package ready; plans 02-02 through 02-07 can proceed
-Last activity: 2026-03-05 — Plan 02-01 complete; internal/git package with 6 passing tests
+Plan: 2 of 7 in current phase — COMPLETE
+Status: Phase 2 Plan 02 complete; migration 002 applied; worktree_state and repo_copy_files tables ready; plans 02-03 through 02-07 can proceed
+Last activity: 2026-03-05 — Plan 02-02 complete; migration 002 with worktree_state and repo_copy_files tables
 
-Progress: [████░░░░░░] 21%
+Progress: [█████░░░░░] 24%
 
 ## Performance Metrics
 
@@ -28,10 +28,10 @@ Progress: [████░░░░░░] 21%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-foundation | 3 | ~22 min | ~7 min |
-| 02-git-integration | 1 | ~2 min | ~2 min |
+| 02-git-integration | 2 | ~4 min | ~2 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (9 min), 01-02 (3 min), 01-03 (~10 min), 02-01 (2 min)
+- Last 5 plans: 01-01 (9 min), 01-02 (3 min), 01-03 (~10 min), 02-01 (2 min), 02-02 (2 min)
 - Trend: stable
 
 *Updated after each plan completion*
@@ -60,6 +60,8 @@ Recent decisions affecting current work:
 - [02-01] git CLI subprocesses not go-git: go-git v5 lacks linked worktree support; subprocess is correct path
 - [02-01] Behind=-1 sentinel: git omits branch.ab line entirely when no upstream; -1 distinguishes "no upstream" from "zero behind"
 - [02-01] Diff returns []byte not string: raw ANSI bytes passed directly to viewport SetContent(); conversion deferred to caller
+- [02-02] worktree_state.behind defaults to -1: sentinel for no upstream tracking branch, consistent with internal/git PollState convention
+- [02-02] repo_copy_files.pattern stores exact relative paths: glob expansion deferred to later phase
 
 ### Pending Todos
 
@@ -73,5 +75,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-05
-Stopped at: Completed 02-01-PLAN.md — internal/git package with run(), ListWorktrees, AddWorktree, RemoveWorktree, PollState, Diff; 6 tests passing
+Stopped at: Completed 02-02-PLAN.md — migration 002 with worktree_state and repo_copy_files tables; both applied cleanly on fresh DB
 Resume file: None
