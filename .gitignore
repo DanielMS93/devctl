@@ -1,0 +1,14 @@
+# Compiled binaries
+/devctl
+*.db
+*.db-shm
+*.db-wal
+
+# OS artifacts
+.DS_Store
+
+# Test artifacts
+/tmp/
+
+# Go build cache
+*.test
