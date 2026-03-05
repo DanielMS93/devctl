@@ -66,9 +66,16 @@ func main() {
 		Long: `devctl gives you one place to see everything happening across all your
 repos and worktrees — no lost sessions, no forgotten branches, no missed follow-ups.`,
 		SilenceUsage: true,
+		// PersistentPreRunE stores the DB in context so all subcommands can access it
+		// without global state. The db variable is captured from the main() scope above.
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			cmd.SetContext(context.WithValue(cmd.Context(), dbKey{}, db))
+			return nil
+		},
 	}
 
 	root.AddCommand(dashboardCmd(mgr))
+	root.AddCommand(worktreeCmd)
 
 	if err := root.ExecuteContext(ctx); err != nil {
 		os.Exit(1)
