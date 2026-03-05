@@ -5,32 +5,33 @@
 See: .planning/PROJECT.md (updated 2026-03-05)
 
 **Core value:** A developer can open `devctl dashboard` and immediately see everything happening across all their repos and worktrees — no lost sessions, no forgotten branches, no missed follow-ups.
-**Current focus:** Phase 1 - Foundation
+**Current focus:** Phase 2 - Git Integration
 
 ## Current Position
 
-Phase: 1 of 6 (Foundation) — COMPLETE
-Plan: 3 of 3 in current phase — COMPLETE
-Status: Phase 1 complete; ready for Phase 2 (Worktree Manager)
-Last activity: 2026-03-05 — Plan 03 all tasks complete; human-verified TUI, WAL mode, race detector clean
+Phase: 2 of 6 (Git Integration) — IN PROGRESS
+Plan: 1 of 7 in current phase — COMPLETE
+Status: Phase 2 Plan 01 complete; internal/git package ready; plans 02-02 through 02-07 can proceed
+Last activity: 2026-03-05 — Plan 02-01 complete; internal/git package with 6 passing tests
 
-Progress: [███░░░░░░░] 17%
+Progress: [████░░░░░░] 21%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2
-- Average duration: 6 min
-- Total execution time: 0.2 hours
+- Total plans completed: 4
+- Average duration: 5 min
+- Total execution time: 0.23 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-foundation | 3 | ~22 min | ~7 min |
+| 02-git-integration | 1 | ~2 min | ~2 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (9 min), 01-02 (3 min), 01-03 (~10 min)
+- Last 5 plans: 01-01 (9 min), 01-02 (3 min), 01-03 (~10 min), 02-01 (2 min)
 - Trend: stable
 
 *Updated after each plan completion*
@@ -56,6 +57,9 @@ Recent decisions affecting current work:
 - [01-03] Log to ~/.devctl/devctl.log: slog output must not reach stdout/stderr while TUI owns the terminal
 - [01-03] storage.Open() before RunMigrations(): Open configures WAL and max-one-writer before migrations touch the DB; order is load-bearing
 - [01-03] Manager.Start(ctx) before cobra.Execute(): Manager alive before any subcommand runs; future non-TUI commands also benefit
+- [02-01] git CLI subprocesses not go-git: go-git v5 lacks linked worktree support; subprocess is correct path
+- [02-01] Behind=-1 sentinel: git omits branch.ab line entirely when no upstream; -1 distinguishes "no upstream" from "zero behind"
+- [02-01] Diff returns []byte not string: raw ANSI bytes passed directly to viewport SetContent(); conversion deferred to caller
 
 ### Pending Todos
 
@@ -69,5 +73,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-05
-Stopped at: Phase 1 complete — all 3 plans committed and summarized; ready to plan Phase 2 (Worktree Manager)
+Stopped at: Completed 02-01-PLAN.md — internal/git package with run(), ListWorktrees, AddWorktree, RemoveWorktree, PollState, Diff; 6 tests passing
 Resume file: None
