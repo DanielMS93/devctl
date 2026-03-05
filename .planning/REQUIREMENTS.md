@@ -146,10 +146,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AI-10 | Phase 6 | Pending |
 
 **Coverage:**
-- v1 requirements: 39 total
-- Mapped to phases: 38
+- v1 requirements: 40 total
+- Mapped to phases: 40 ✓
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-03-05*
-*Last updated: 2026-03-05 after initial definition*
+*Last updated: 2026-03-05 after roadmap creation*
