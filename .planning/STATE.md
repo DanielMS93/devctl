@@ -36,6 +36,8 @@ Progress: [███████░░░] 40%
 
 *Updated after each plan completion*
 
+| Phase 02-git-integration P05 | 5 min | 2 tasks | 3 files |
+
 ## Accumulated Context
 
 ### Decisions
@@ -71,6 +73,7 @@ Recent decisions affecting current work:
 - [02-04] Drop-on-full emit: state event channel full means TUI is lagging; drop tick rather than block poller goroutine
 - [02-07] File copy failures are non-fatal warnings: worktree create succeeds even if copying repo_copy_files fails
 - [02-07] Viper SafeWriteConfig fallback handles first-run case where config file does not yet exist
+- [Phase 02-git-integration]: Selection propagated to rightPanel immediately on navigation and on every StateEvent to keep panels in sync
 
 ### Pending Todos
 
@@ -84,5 +87,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-05
-Stopped at: Completed 02-07-PLAN.md — GIT-09 file copy on worktree create; devctl config set-copy-files/list-copy-files/set subcommands; Phase 2 complete
+Stopped at: Completed 02-05-PLAN.md — RepoPanel worktree list rendering, ahead/behind badges, arrow key navigation, SelectedWorktree() accessor
 Resume file: None
