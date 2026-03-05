@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"log/slog"
+
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/danielmiessler/devctl/pkg/tui/panels"
@@ -23,6 +25,7 @@ type RootModel struct {
 
 	leftPanel  panels.RepoPanel
 	rightPanel panels.DetailPanel
+	viewer     panels.ViewerModel
 	logBar     panels.LogBar
 
 	stateChan <-chan StateEvent
@@ -33,6 +36,7 @@ func NewRootModel(events <-chan StateEvent) RootModel {
 	return RootModel{
 		leftPanel:  panels.NewRepoPanel(),
 		rightPanel: panels.NewDetailPanel(),
+		viewer:     panels.NewViewerModel(),
 		logBar:     panels.NewLogBar(),
 		stateChan:  events,
 	}
@@ -51,6 +55,14 @@ func (m RootModel) Init() tea.Cmd {
 func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
+	// Always let viewer process messages when visible (handles its own key routing).
+	if m.viewer.Visible {
+		consumed, cmd := m.viewer.Update(msg)
+		if consumed {
+			return m, cmd
+		}
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg: // v2: was tea.KeyMsg in v1
 		switch msg.String() {
@@ -63,11 +75,23 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.activePanel == PanelLeft {
 				m.leftPanel.MoveUp()
 				m.rightPanel.SetWorktree(m.leftPanel.SelectedWorktree())
+			} else if m.activePanel == PanelRight {
+				m.rightPanel.MoveUp()
 			}
 		case "down", "j":
 			if m.activePanel == PanelLeft {
 				m.leftPanel.MoveDown()
 				m.rightPanel.SetWorktree(m.leftPanel.SelectedWorktree())
+			} else if m.activePanel == PanelRight {
+				m.rightPanel.MoveDown()
+			}
+		case "enter":
+			if m.activePanel == PanelRight {
+				selectedFile := m.rightPanel.SelectedFile()
+				wt := m.leftPanel.SelectedWorktree()
+				if selectedFile != "" && wt != nil {
+					return m, m.viewer.Open(wt.WorktreePath, selectedFile)
+				}
 			}
 		}
 
@@ -81,6 +105,12 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.rightPanel.SetWorktree(m.leftPanel.SelectedWorktree())
 		// Re-arm: exactly one goroutine blocks on the channel at a time.
 		cmds = append(cmds, m.subscribeToStateEvents())
+
+	case panels.EditorFinishedMsg:
+		// Editor has exited; TUI already restored by Bubbletea — nothing to do.
+		if msg.Err != nil {
+			slog.Warn("editor exited with error", "err", msg.Err)
+		}
 	}
 
 	return m, tea.Batch(cmds...)
@@ -91,7 +121,13 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // Returns tea.View (v2 API; v1 returned string).
 func (m RootModel) View() tea.View {
 	left := m.leftPanel.View()
-	right := m.rightPanel.View()
+
+	var right string
+	if m.viewer.Visible {
+		right = m.viewer.View()
+	} else {
+		right = m.rightPanel.View()
+	}
 
 	body := lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 	full := lipgloss.JoinVertical(lipgloss.Left, body, m.logBar.View())
@@ -126,5 +162,6 @@ func (m *RootModel) propagateSizes() {
 	m.leftPanel.SetFocused(m.activePanel == PanelLeft)
 	m.rightPanel.SetSize(rightWidth, bodyHeight)
 	m.rightPanel.SetFocused(m.activePanel == PanelRight)
+	m.viewer.SetSize(rightWidth, bodyHeight)
 	m.logBar.SetWidth(m.width)
 }
