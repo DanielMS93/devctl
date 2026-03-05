@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/danielmiessler/devctl/internal/git"
@@ -120,7 +122,65 @@ func runWorktreeCreate(ctx context.Context, db *sqlx.DB, repoPath, branch string
 		return fmt.Errorf("insert worktree: %w", err)
 	}
 
+	// Copy any configured local-only files into the new worktree.
+	if err := copyConfiguredFiles(ctx, db, repoID, absRepoPath, worktreePath); err != nil {
+		// Non-fatal: log warning but don't fail the create
+		fmt.Printf("Warning: some files could not be copied: %v\n", err)
+	}
+
 	fmt.Printf("Created worktree: %s (branch: %s)\n", worktreePath, branch)
+	return nil
+}
+
+// copyConfiguredFiles copies files from the main worktree (srcRoot) into
+// the newly created worktreePath (dstRoot). Files listed in repo_copy_files
+// for this repo are copied if they exist in the source; missing files are
+// silently skipped.
+func copyConfiguredFiles(ctx context.Context, db *sqlx.DB, repoID, srcRoot, dstRoot string) error {
+	rows, err := db.QueryContext(ctx,
+		`SELECT pattern FROM repo_copy_files WHERE repo_id = ? ORDER BY pattern`, repoID)
+	if err != nil {
+		return fmt.Errorf("query copy files: %w", err)
+	}
+	defer rows.Close()
+
+	var errs []string
+	for rows.Next() {
+		var pattern string
+		if err := rows.Scan(&pattern); err != nil {
+			continue
+		}
+		src := filepath.Join(srcRoot, pattern)
+		dst := filepath.Join(dstRoot, pattern)
+
+		data, err := os.ReadFile(src)
+		if os.IsNotExist(err) {
+			// Source file doesn't exist — skip silently (common for optional files like .env.local)
+			continue
+		}
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("%s: %v", pattern, err))
+			continue
+		}
+
+		// Ensure parent directory exists in destination
+		if err := os.MkdirAll(filepath.Dir(dst), 0750); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: mkdir: %v", pattern, err))
+			continue
+		}
+
+		if err := os.WriteFile(dst, data, 0600); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: write: %v", pattern, err))
+			continue
+		}
+		fmt.Printf("  Copied: %s\n", pattern)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("copy errors: %s", strings.Join(errs, "; "))
+	}
 	return nil
 }
 

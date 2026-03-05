@@ -76,6 +76,7 @@ repos and worktrees — no lost sessions, no forgotten branches, no missed follo
 
 	root.AddCommand(dashboardCmd(mgr))
 	root.AddCommand(worktreeCmd)
+	root.AddCommand(configCmd)
 
 	if err := root.ExecuteContext(ctx); err != nil {
 		os.Exit(1)
