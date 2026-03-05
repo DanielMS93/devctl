@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-03-05)
 
 ## Current Position
 
-Phase: 1 of 6 (Foundation)
-Plan: 3 of 3 in current phase
-Status: Awaiting checkpoint (human-verify)
-Last activity: 2026-03-05 — Plan 03 tasks 1+2 complete; stopped at checkpoint:human-verify
+Phase: 1 of 6 (Foundation) — COMPLETE
+Plan: 3 of 3 in current phase — COMPLETE
+Status: Phase 1 complete; ready for Phase 2 (Worktree Manager)
+Last activity: 2026-03-05 — Plan 03 all tasks complete; human-verified TUI, WAL mode, race detector clean
 
-Progress: [██░░░░░░░░] 10%
+Progress: [███░░░░░░░] 17%
 
 ## Performance Metrics
 
@@ -27,11 +27,11 @@ Progress: [██░░░░░░░░] 10%
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01-foundation | 2 | 12 min | 6 min |
+| 01-foundation | 3 | ~22 min | ~7 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (9 min), 01-02 (3 min)
-- Trend: faster
+- Last 5 plans: 01-01 (9 min), 01-02 (3 min), 01-03 (~10 min)
+- Trend: stable
 
 *Updated after each plan completion*
 
@@ -53,6 +53,9 @@ Recent decisions affecting current work:
 - [01-02] Type aliases in pkg/tui/messages.go: StateEvent = tuimsg.StateEvent preserves public API while resolving cycle
 - [01-02] Bubbletea v2 Init() returns tea.Cmd (not (Model,Cmd)); AltScreen is a View field, not a command
 - [01-02] Recursive subscription: subscribeToStateEvents() re-armed on every StateEvent; exactly one goroutine blocks at a time
+- [01-03] Log to ~/.devctl/devctl.log: slog output must not reach stdout/stderr while TUI owns the terminal
+- [01-03] storage.Open() before RunMigrations(): Open configures WAL and max-one-writer before migrations touch the DB; order is load-bearing
+- [01-03] Manager.Start(ctx) before cobra.Execute(): Manager alive before any subcommand runs; future non-TUI commands also benefit
 
 ### Pending Todos
 
@@ -66,5 +69,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-05
-Stopped at: 01-03-PLAN.md Task 3 checkpoint:human-verify — TUI visual verification and WAL mode confirmation required
+Stopped at: Phase 1 complete — all 3 plans committed and summarized; ready to plan Phase 2 (Worktree Manager)
 Resume file: None
