@@ -48,10 +48,16 @@ Plans:
   3. User can select a changed file in the dashboard to open an inline preview with syntax highlighting and scroll
   4. User can view an inline diff (unstaged, staged, branch vs main, branch vs origin) from the dashboard
   5. User can press a key in the inline viewer to open the current file in their configured editor
-**Plans**: TBD
+**Plans**: 7 plans
 
 Plans:
-- [ ] 02-01: TBD
+- [ ] 02-01-PLAN.md — internal/git package: run() helper, ListWorktrees/AddWorktree/RemoveWorktree, PollState, Diff, unit tests
+- [ ] 02-02-PLAN.md — Migration 002: worktree_state cache table and repo_copy_files table
+- [ ] 02-03-PLAN.md — devctl worktree list/create/delete cobra subcommands with DB integration
+- [ ] 02-04-PLAN.md — StateSnapshot expansion with WorktreeState; Manager polls git per worktree, persists to DB cache
+- [ ] 02-05-PLAN.md — Left panel renders worktree list with ahead/behind badges and arrow key navigation
+- [ ] 02-06-PLAN.md — Right panel changed files list + inline viewer (chroma preview, 4 diff modes, editor open)
+- [ ] 02-07-PLAN.md — File copy on worktree create (GIT-09); devctl config set-copy-files; viper editor config
 
 ### Phase 3: Dashboard TUI
 **Goal**: Users can launch `devctl dashboard` and see all tracked repos, worktrees, and file change state in one keyboard-navigable view
@@ -118,7 +124,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 0/TBD | Not started | - |
-| 2. Git Integration | 0/TBD | Not started | - |
+| 2. Git Integration | 0/7 | Not started | - |
 | 3. Dashboard TUI | 0/TBD | Not started | - |
 | 4. Session Management | 0/TBD | Not started | - |
 | 5. Tasks and Dependencies | 0/TBD | Not started | - |
