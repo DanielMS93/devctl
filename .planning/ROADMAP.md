@@ -31,10 +31,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. `devctl dashboard` opens without crashing and renders a three-panel TUI skeleton (even with empty data)
   4. Background git polling runs without blocking the TUI — the UI stays responsive while state updates arrive
   5. Running `devctl` with `-race` produces zero data race warnings
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 01-01: TBD
+- [ ] 01-01-PLAN.md — Go module init, all dependencies, storage.Open() with WAL pragmas, embedded migration runner, initial schema
+- [ ] 01-02-PLAN.md — Background state manager (buffered channel, context-cancelled goroutine), Bubbletea v2 RootModel and three stub panels
+- [ ] 01-03-PLAN.md — Cobra CLI wiring, full integration, race detector smoke test, human TUI verification
 
 ### Phase 2: Git Integration
 **Goal**: Users can manage worktrees from the CLI and see accurate, live git state (ahead/behind, staged/unstaged, changed files, diffs) per worktree
