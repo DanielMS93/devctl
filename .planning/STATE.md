@@ -66,6 +66,9 @@ Recent decisions affecting current work:
 - [02-03] PersistentPreRunE on root command: single DB injection point covers all current and future subcommands
 - [02-03] ensureRepo auto-registers repos on first worktree create: no separate repo add command needed
 - [02-03] sanitizeBranch replaces path-unsafe chars with dash: branch feature/add-login becomes directory feature-add-login
+- [02-04] tuimsg must NOT import internal/git: Manager owns git->tuimsg mapping to preserve TUI layer independence from subprocess layer
+- [02-04] nil DB guard in Manager: loadCachedSnapshot and pollAllWorktrees return empty snapshot when db is nil (test-safe pattern)
+- [02-04] Drop-on-full emit: state event channel full means TUI is lagging; drop tick rather than block poller goroutine
 - [02-07] File copy failures are non-fatal warnings: worktree create succeeds even if copying repo_copy_files fails
 - [02-07] Viper SafeWriteConfig fallback handles first-run case where config file does not yet exist
 
