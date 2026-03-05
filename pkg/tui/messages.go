@@ -1,15 +1,14 @@
+// Package tui re-exports the shared message types from pkg/tui/tuimsg.
+// Callers outside this subsystem should import pkg/tui directly; the tuimsg
+// sub-package exists solely to break the pkg/tui <-> pkg/tui/panels import cycle.
 package tui
 
-import "time"
+import "github.com/danielmiessler/devctl/pkg/tui/tuimsg"
 
 // StateSnapshot is the point-in-time snapshot of all tracked state.
 // Fields expand in later phases; kept minimal for Phase 1.
-type StateSnapshot struct {
-	UpdatedAt time.Time
-}
+type StateSnapshot = tuimsg.StateSnapshot
 
 // StateEvent is the tea.Msg delivered to RootModel.Update() when the
 // background state manager emits a new snapshot.
-type StateEvent struct {
-	Snapshot StateSnapshot
-}
+type StateEvent = tuimsg.StateEvent
