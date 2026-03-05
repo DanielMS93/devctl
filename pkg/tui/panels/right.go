@@ -2,6 +2,7 @@ package panels
 
 import (
 	"charm.land/lipgloss/v2"
+	"github.com/danielmiessler/devctl/pkg/tui/tuimsg"
 )
 
 // DetailPanel is the right pane showing details for the selected item.
@@ -21,6 +22,12 @@ func (p *DetailPanel) SetSize(width, height int) {
 
 func (p *DetailPanel) SetFocused(focused bool) {
 	p.focused = focused
+}
+
+// SetWorktree updates which worktree's details to show.
+// Phase 2 Plan 06 replaces this stub with real changed-files rendering.
+func (p *DetailPanel) SetWorktree(wt *tuimsg.WorktreeState) {
+	// stub — implemented in 02-06
 }
 
 func (p DetailPanel) View() string {

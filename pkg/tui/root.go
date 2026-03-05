@@ -59,6 +59,16 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "tab":
 			m.activePanel = (m.activePanel + 1) % 2
 			m.propagateSizes()
+		case "up", "k":
+			if m.activePanel == PanelLeft {
+				m.leftPanel.MoveUp()
+				m.rightPanel.SetWorktree(m.leftPanel.SelectedWorktree())
+			}
+		case "down", "j":
+			if m.activePanel == PanelLeft {
+				m.leftPanel.MoveDown()
+				m.rightPanel.SetWorktree(m.leftPanel.SelectedWorktree())
+			}
 		}
 
 	case tea.WindowSizeMsg:
@@ -68,6 +78,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case StateEvent:
 		m.leftPanel.SetState(msg)
+		m.rightPanel.SetWorktree(m.leftPanel.SelectedWorktree())
 		// Re-arm: exactly one goroutine blocks on the channel at a time.
 		cmds = append(cmds, m.subscribeToStateEvents())
 	}
