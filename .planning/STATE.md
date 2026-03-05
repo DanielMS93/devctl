@@ -10,28 +10,28 @@ See: .planning/PROJECT.md (updated 2026-03-05)
 ## Current Position
 
 Phase: 1 of 6 (Foundation)
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase
 Status: In progress
-Last activity: 2026-03-05 — Plan 01 complete (Go module + storage layer)
+Last activity: 2026-03-05 — Plan 02 complete (state manager + Bubbletea v2 TUI skeleton)
 
-Progress: [█░░░░░░░░░] 5%
+Progress: [██░░░░░░░░] 10%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1
-- Average duration: 9 min
-- Total execution time: 0.15 hours
+- Total plans completed: 2
+- Average duration: 6 min
+- Total execution time: 0.2 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01-foundation | 1 | 9 min | 9 min |
+| 01-foundation | 2 | 12 min | 6 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (9 min)
-- Trend: -
+- Last 5 plans: 01-01 (9 min), 01-02 (3 min)
+- Trend: faster
 
 *Updated after each plan completion*
 
@@ -49,6 +49,10 @@ Recent decisions affecting current work:
 - [01-01] golang-migrate/database/sqlite (not sqlite3): sqlite driver wraps modernc; sqlite3 pulls CGO
 - [01-01] tools.go build-tag pattern: retains TUI/CLI deps in go.mod before they have importers in actual code
 - [01-01] RunMigrations() takes dbPath string not *sqlx.DB: golang-migrate needs its own DSN connection
+- [01-02] pkg/tui/tuimsg leaf package: breaks import cycle between pkg/tui and pkg/tui/panels; both import tuimsg without circular dependency
+- [01-02] Type aliases in pkg/tui/messages.go: StateEvent = tuimsg.StateEvent preserves public API while resolving cycle
+- [01-02] Bubbletea v2 Init() returns tea.Cmd (not (Model,Cmd)); AltScreen is a View field, not a command
+- [01-02] Recursive subscription: subscribeToStateEvents() re-armed on every StateEvent; exactly one goroutine blocks at a time
 
 ### Pending Todos
 
@@ -62,5 +66,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-05
-Stopped at: Completed 01-01-PLAN.md — Go module + WAL SQLite storage + embedded migrations
+Stopped at: Completed 01-02-PLAN.md — background state manager + Bubbletea v2 TUI skeleton with three stub panels
 Resume file: None
