@@ -10,28 +10,28 @@ See: .planning/PROJECT.md (updated 2026-03-05)
 ## Current Position
 
 Phase: 2 of 6 (Git Integration) — IN PROGRESS
-Plan: 2 of 7 in current phase — COMPLETE
-Status: Phase 2 Plan 02 complete; migration 002 applied; worktree_state and repo_copy_files tables ready; plans 02-03 through 02-07 can proceed
-Last activity: 2026-03-05 — Plan 02-02 complete; migration 002 with worktree_state and repo_copy_files tables
+Plan: 3 of 7 in current phase — COMPLETE
+Status: Phase 2 Plan 03 complete; devctl worktree list/create/delete subcommands functional; plans 02-04 through 02-07 can proceed
+Last activity: 2026-03-05 — Plan 02-03 complete; worktree CLI with DB context injection and auto-repo registration
 
-Progress: [█████░░░░░] 24%
+Progress: [█████░░░░░] 26%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4
-- Average duration: 5 min
-- Total execution time: 0.23 hours
+- Total plans completed: 5
+- Average duration: 4 min
+- Total execution time: 0.27 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01-foundation | 3 | ~22 min | ~7 min |
-| 02-git-integration | 2 | ~4 min | ~2 min |
+| 02-git-integration | 3 | ~6 min | ~2 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (9 min), 01-02 (3 min), 01-03 (~10 min), 02-01 (2 min), 02-02 (2 min)
+- Last 5 plans: 01-02 (3 min), 01-03 (~10 min), 02-01 (2 min), 02-02 (2 min), 02-03 (2 min)
 - Trend: stable
 
 *Updated after each plan completion*
@@ -62,6 +62,10 @@ Recent decisions affecting current work:
 - [02-01] Diff returns []byte not string: raw ANSI bytes passed directly to viewport SetContent(); conversion deferred to caller
 - [02-02] worktree_state.behind defaults to -1: sentinel for no upstream tracking branch, consistent with internal/git PollState convention
 - [02-02] repo_copy_files.pattern stores exact relative paths: glob expansion deferred to later phase
+- [02-03] dbKey{} context key in worktree.go: DB passed via cobra context, not global variable
+- [02-03] PersistentPreRunE on root command: single DB injection point covers all current and future subcommands
+- [02-03] ensureRepo auto-registers repos on first worktree create: no separate repo add command needed
+- [02-03] sanitizeBranch replaces path-unsafe chars with dash: branch feature/add-login becomes directory feature-add-login
 
 ### Pending Todos
 
@@ -75,5 +79,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-05
-Stopped at: Completed 02-02-PLAN.md — migration 002 with worktree_state and repo_copy_files tables; both applied cleanly on fresh DB
+Stopped at: Completed 02-03-PLAN.md — devctl worktree list/create/delete subcommands; DB via cobra context key; auto-repo registration
 Resume file: None
