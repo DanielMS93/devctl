@@ -2,8 +2,10 @@ package claude
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -241,16 +243,19 @@ func scanSessionsInDir(repoPath, dir string, threshold time.Duration) ([]Session
 		}
 		id := entry.Name()[:len(entry.Name())-6]
 		filePath := filepath.Join(dir, entry.Name())
-		lastMsg, slug, recentFiles := parseJSONL(filePath)
+		lastMsg, slug, recentFiles, extras := parseJSONL(filePath)
 		lastActivity := info.ModTime()
 		sessions = append(sessions, Session{
-			ID:           id,
-			ProjectPath:  repoPath,
-			Slug:         slug,
-			LastActivity: lastActivity,
-			IsActive:     IsActive2(lastActivity, threshold),
-			LastMessage:  lastMsg,
-			RecentFiles:  recentFiles,
+			ID:             id,
+			ProjectPath:    repoPath,
+			Slug:           slug,
+			LastActivity:   lastActivity,
+			IsActive:       IsActive2(lastActivity, threshold),
+			LastMessage:     lastMsg,
+			RecentFiles:    recentFiles,
+			CurrentTool:    extras.currentTool,
+			CurrentCommand: extras.currentCommand,
+			RecentTools:    extras.recentTools,
 		})
 	}
 	sortSessions(sessions)
@@ -272,4 +277,135 @@ func mustMarshal(t *testing.T, v any) string {
 	b, err := json.Marshal(v)
 	require.NoError(t, err)
 	return string(b)
+}
+
+// toolUseLineWithCommand creates an assistant entry with a Bash tool_use.
+func toolUseLineWithCommand(command, slug, sessionID string) map[string]any {
+	return map[string]any{
+		"type":      "assistant",
+		"sessionId": sessionID,
+		"slug":      slug,
+		"timestamp": "2026-03-06T10:00:00Z",
+		"message": map[string]any{
+			"role": "assistant",
+			"content": []any{
+				map[string]any{
+					"type": "tool_use",
+					"name": "Bash",
+					"input": map[string]any{
+						"command": command,
+					},
+				},
+			},
+		},
+	}
+}
+
+func TestExtractRecentTools(t *testing.T) {
+	sid := "test-session"
+	slug := "test-slug"
+
+	lines := []string{
+		mustMarshal(t, userTextLine("do something", slug, sid)),
+		mustMarshal(t, toolUseLine("Read", "/foo/bar.go", slug, sid)),
+		mustMarshal(t, toolUseLineWithCommand("go test ./...", slug, sid)),
+		mustMarshal(t, toolUseLine("Edit", "/foo/baz.go", slug, sid)),
+	}
+
+	tools := extractRecentTools(lines, 5)
+	require.Len(t, tools, 3)
+	// Most recent first (scanning backwards).
+	assert.Equal(t, "Edit", tools[0].Tool)
+	assert.Equal(t, "/foo/baz.go", tools[0].Target)
+	assert.Equal(t, "Bash", tools[1].Tool)
+	assert.Equal(t, "go test ./...", tools[1].Target)
+	assert.Equal(t, "Read", tools[2].Tool)
+	assert.Equal(t, "/foo/bar.go", tools[2].Target)
+}
+
+func TestExtractRecentTools_MaxLimit(t *testing.T) {
+	sid := "test-session"
+	slug := "test-slug"
+
+	var lines []string
+	for i := 0; i < 10; i++ {
+		lines = append(lines, mustMarshal(t, toolUseLine("Read", fmt.Sprintf("/file%d.go", i), slug, sid)))
+	}
+
+	tools := extractRecentTools(lines, 3)
+	assert.Len(t, tools, 3, "should respect maxTools limit")
+}
+
+func TestDetermineCurrentTool_ActiveTool(t *testing.T) {
+	sid := "test-session"
+	slug := "test-slug"
+
+	// Last entry is assistant tool_use (after the user entry) → currently executing.
+	lines := []string{
+		mustMarshal(t, userTextLine("fix the bug", slug, sid)),
+		mustMarshal(t, toolUseLine("Write", "/foo/fix.go", slug, sid)),
+	}
+
+	tool, cmd := determineCurrentTool(lines)
+	assert.Equal(t, "Write", tool)
+	assert.Equal(t, "/foo/fix.go", cmd)
+}
+
+func TestDetermineCurrentTool_NoActiveTool(t *testing.T) {
+	sid := "test-session"
+	slug := "test-slug"
+
+	// Last entry is a user entry → no tool currently executing.
+	lines := []string{
+		mustMarshal(t, toolUseLine("Read", "/foo/bar.go", slug, sid)),
+		mustMarshal(t, userTextLine("looks good", slug, sid)),
+	}
+
+	tool, cmd := determineCurrentTool(lines)
+	assert.Empty(t, tool)
+	assert.Empty(t, cmd)
+}
+
+func TestExtractRecentTools_DefensiveParsing(t *testing.T) {
+	// Malformed JSON should be skipped gracefully.
+	lines := []string{
+		"not valid json",
+		`{"message":{"role":"assistant","content":[{"type":"tool_use"}]}}`, // missing name
+		`{"message":{"role":"assistant","content":[{"type":"tool_use","name":"UnknownTool","input":{}}]}}`,
+	}
+
+	tools := extractRecentTools(lines, 5)
+	// Only the UnknownTool entry should be extracted (name="" is skipped).
+	require.Len(t, tools, 1)
+	assert.Equal(t, "UnknownTool", tools[0].Tool)
+	assert.Empty(t, tools[0].Target)
+}
+
+func TestExtractToolTarget_BashTruncation(t *testing.T) {
+	longCmd := strings.Repeat("x", 100)
+	target := extractToolTarget("Bash", map[string]any{"command": longCmd})
+	assert.Len(t, target, 80, "Bash commands should be truncated to 80 chars")
+}
+
+func TestScanSessions_ToolActivityPopulated(t *testing.T) {
+	projectDir := t.TempDir()
+	repoPath := "/fake/repo"
+	sessionID := "aaaabbbb-0000-0000-0000-000000000099"
+
+	lines := []string{
+		mustMarshal(t, userTextLine("fix the parser", "cool-session", sessionID)),
+		mustMarshal(t, toolUseLine("Read", "/fake/repo/parser.go", "cool-session", sessionID)),
+		mustMarshal(t, toolUseLineWithCommand("go build ./...", "cool-session", sessionID)),
+	}
+	writeFixtureSession(t, projectDir, sessionID, lines)
+
+	sessions, err := scanSessionsInDir(repoPath, projectDir, 20*time.Minute)
+	require.NoError(t, err)
+	require.Len(t, sessions, 1)
+
+	s := sessions[0]
+	// Last entry is assistant (Bash) after user → currently executing.
+	assert.Equal(t, "Bash", s.CurrentTool)
+	assert.Equal(t, "go build ./...", s.CurrentCommand)
+	assert.Len(t, s.RecentTools, 2)
 }

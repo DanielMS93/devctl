@@ -14,15 +14,25 @@ import (
 // ActiveThreshold is the default duration after which a session is considered idle.
 const ActiveThreshold = 20 * time.Minute
 
+// ToolActivity represents one tool invocation extracted from a JSONL assistant entry.
+type ToolActivity struct {
+	Tool      string    // e.g. "Bash", "Read", "Write", "Edit", "Agent"
+	Target    string    // command or file path
+	Timestamp time.Time // parsed from the entry's timestamp field
+}
+
 // Session represents one Claude Code session for a project.
 type Session struct {
-	ID           string
-	ProjectPath  string    // absolute path of the repo
-	Slug         string    // human-readable session slug (e.g. "agile-crunching-canyon")
-	LastActivity time.Time // file mtime
-	IsActive     bool      // modified within ActiveThreshold
-	LastMessage  string    // last user text message, or slug as fallback
-	RecentFiles  []string  // recently touched files (up to 10)
+	ID             string
+	ProjectPath    string    // absolute path of the repo
+	Slug           string    // human-readable session slug (e.g. "agile-crunching-canyon")
+	LastActivity   time.Time // file mtime
+	IsActive       bool      // modified within ActiveThreshold
+	LastMessage    string    // last user text message, or slug as fallback
+	RecentFiles    []string  // recently touched files (up to 10)
+	CurrentTool    string    // name of the most recent tool_use with no subsequent user entry
+	CurrentCommand string    // target of the current tool (file path or truncated command)
+	RecentTools    []ToolActivity // last 5 tool activities
 }
 
 // ClaudeProjectDir returns the ~/.claude/projects/ directory for the given repo path.
@@ -133,17 +143,20 @@ func ScanSessionsWithThreshold(repoPath string, threshold time.Duration) ([]Sess
 
 		id := strings.TrimSuffix(entry.Name(), ".jsonl")
 		filePath := filepath.Join(dir, entry.Name())
-		lastMsg, slug, recentFiles := parseJSONL(filePath)
+		lastMsg, slug, recentFiles, extras := parseJSONL(filePath)
 		lastActivity := info.ModTime()
 
 		sessions = append(sessions, Session{
-			ID:           id,
-			ProjectPath:  repoPath,
-			Slug:         slug,
-			LastActivity: lastActivity,
-			IsActive:     IsActive2(lastActivity, threshold),
-			LastMessage:  lastMsg,
-			RecentFiles:  recentFiles,
+			ID:             id,
+			ProjectPath:    repoPath,
+			Slug:           slug,
+			LastActivity:   lastActivity,
+			IsActive:       IsActive2(lastActivity, threshold),
+			LastMessage:     lastMsg,
+			RecentFiles:    recentFiles,
+			CurrentTool:    extras.currentTool,
+			CurrentCommand: extras.currentCommand,
+			RecentTools:    extras.recentTools,
 		})
 	}
 
@@ -164,13 +177,150 @@ func IsActive2(lastActivity time.Time, threshold time.Duration) bool {
 	return time.Since(lastActivity) < threshold
 }
 
+// sessionExtras holds the additional fields extracted from JSONL beyond message/slug/files.
+type sessionExtras struct {
+	currentTool    string
+	currentCommand string
+	recentTools    []ToolActivity
+}
+
+// extractRecentTools scans JSONL lines from the end backwards and extracts
+// the most recent tool_use activities from assistant entries.
+func extractRecentTools(lines []string, maxTools int) []ToolActivity {
+	var tools []ToolActivity
+	for i := len(lines) - 1; i >= 0 && len(tools) < maxTools; i-- {
+		var obj map[string]any
+		if json.Unmarshal([]byte(lines[i]), &obj) != nil {
+			continue
+		}
+		msg, _ := obj["message"].(map[string]any)
+		role, _ := msg["role"].(string)
+		if role != "assistant" {
+			continue
+		}
+		content, _ := msg["content"].([]any)
+		// Process content elements in reverse so most-recent tool_use within
+		// a single message is added first.
+		for j := len(content) - 1; j >= 0 && len(tools) < maxTools; j-- {
+			cm, _ := content[j].(map[string]any)
+			if cm["type"] != "tool_use" {
+				continue
+			}
+			name, _ := cm["name"].(string)
+			if name == "" {
+				continue
+			}
+			input, _ := cm["input"].(map[string]any)
+			target := extractToolTarget(name, input)
+
+			var ts time.Time
+			if tsStr, ok := obj["timestamp"].(string); ok {
+				ts, _ = time.Parse(time.RFC3339Nano, tsStr)
+			}
+
+			tools = append(tools, ToolActivity{
+				Tool:      name,
+				Target:    target,
+				Timestamp: ts,
+			})
+		}
+	}
+	return tools
+}
+
+// extractToolTarget returns the relevant target string for a tool invocation.
+func extractToolTarget(toolName string, input map[string]any) string {
+	switch toolName {
+	case "Bash":
+		cmd, _ := input["command"].(string)
+		if len(cmd) > 80 {
+			cmd = cmd[:80]
+		}
+		return cmd
+	case "Read", "Write", "Edit":
+		if fp, ok := input["file_path"].(string); ok && fp != "" {
+			return fp
+		}
+		if p, ok := input["path"].(string); ok && p != "" {
+			return p
+		}
+		return ""
+	case "Agent":
+		st, _ := input["subagent_type"].(string)
+		return st
+	default:
+		// For unknown tools, try file_path, then path, then command.
+		if fp, ok := input["file_path"].(string); ok && fp != "" {
+			return fp
+		}
+		if p, ok := input["path"].(string); ok && p != "" {
+			return p
+		}
+		if cmd, ok := input["command"].(string); ok && cmd != "" {
+			if len(cmd) > 80 {
+				cmd = cmd[:80]
+			}
+			return cmd
+		}
+		return ""
+	}
+}
+
+// determineCurrentTool checks whether the most recent assistant tool_use is after
+// the last user entry, indicating the tool is still executing.
+func determineCurrentTool(lines []string) (currentTool, currentCommand string) {
+	lastUserIdx := -1
+	lastAssistantToolIdx := -1
+	var toolName, toolTarget string
+
+	for i := len(lines) - 1; i >= 0; i-- {
+		var obj map[string]any
+		if json.Unmarshal([]byte(lines[i]), &obj) != nil {
+			continue
+		}
+		entryType, _ := obj["type"].(string)
+		if entryType == "user" && lastUserIdx == -1 {
+			lastUserIdx = i
+		}
+		if lastAssistantToolIdx == -1 {
+			msg, _ := obj["message"].(map[string]any)
+			role, _ := msg["role"].(string)
+			if role == "assistant" {
+				content, _ := msg["content"].([]any)
+				for j := len(content) - 1; j >= 0; j-- {
+					cm, _ := content[j].(map[string]any)
+					if cm["type"] == "tool_use" {
+						name, _ := cm["name"].(string)
+						if name != "" {
+							lastAssistantToolIdx = i
+							toolName = name
+							input, _ := cm["input"].(map[string]any)
+							toolTarget = extractToolTarget(name, input)
+							break
+						}
+					}
+				}
+			}
+		}
+		// Once we've found both, no need to keep scanning.
+		if lastUserIdx != -1 && lastAssistantToolIdx != -1 {
+			break
+		}
+	}
+
+	if lastAssistantToolIdx > lastUserIdx {
+		return toolName, toolTarget
+	}
+	return "", ""
+}
+
 // parseJSONL reads a session JSONL file and extracts the last user message text,
-// the session slug, and up to 10 recently touched file paths from tool_use events.
+// the session slug, up to 10 recently touched file paths, and tool activity.
 // It reads the whole file; Claude JSONL files are typically < 5MB.
-func parseJSONL(path string) (lastMessage, slug string, recentFiles []string) {
+func parseJSONL(path string) (lastMessage, slug string, recentFiles []string, extras sessionExtras) {
 	f, err := os.Open(path)
 	if err != nil {
-		return "", "", nil
+		return "", "", nil, sessionExtras{}
 	}
 	defer f.Close()
 
@@ -184,7 +334,7 @@ func parseJSONL(path string) (lastMessage, slug string, recentFiles []string) {
 	}
 
 	if len(lines) == 0 {
-		return "", "", nil
+		return "", "", nil, sessionExtras{}
 	}
 
 	// Extract slug from last line (present on every entry).
@@ -195,7 +345,8 @@ func parseJSONL(path string) (lastMessage, slug string, recentFiles []string) {
 		}
 	}
 
-	// Find the last user text message (scanning backwards).
+	// Find the last meaningful user text message (scanning backwards).
+	// Skip auto-generated messages like "Tool loaded." and XML-heavy system prompts.
 	for i := len(lines) - 1; i >= 0; i-- {
 		var obj map[string]any
 		if json.Unmarshal([]byte(lines[i]), &obj) != nil {
@@ -212,9 +363,12 @@ func parseJSONL(path string) (lastMessage, slug string, recentFiles []string) {
 				continue
 			}
 			if text, _ := cm["text"].(string); text != "" {
-				// Strip leading whitespace / XML objective wrappers for readability.
 				text = strings.TrimSpace(text)
-				// Truncate long prompts.
+				if !isUsefulMessage(text) {
+					continue
+				}
+				// Strip XML wrapper tags to extract meaningful content.
+				text = stripXMLWrappers(text)
 				if len(text) > 120 {
 					text = text[:120]
 				}
@@ -264,5 +418,72 @@ func parseJSONL(path string) (lastMessage, slug string, recentFiles []string) {
 		recentFiles = recentFiles[:10]
 	}
 
-	return lastMessage, slug, recentFiles
+	// Extract tool activity.
+	recentTools := extractRecentTools(lines, 5)
+	currentTool, currentCommand := determineCurrentTool(lines)
+	extras = sessionExtras{
+		currentTool:    currentTool,
+		currentCommand: currentCommand,
+		recentTools:    recentTools,
+	}
+
+	return lastMessage, slug, recentFiles, extras
+}
+
+// isUsefulMessage returns false for auto-generated or uninformative messages.
+func isUsefulMessage(text string) bool {
+	lower := strings.ToLower(text)
+	skip := []string{
+		"tool loaded",
+		"tool loaded.",
+		"clear",
+		"continue",
+		"yes",
+		"y",
+		"ok",
+		"approved",
+	}
+	for _, s := range skip {
+		if lower == s {
+			return false
+		}
+	}
+	// Skip messages that are purely XML tags (system prompts, skill invocations)
+	if strings.HasPrefix(text, "<") && !strings.Contains(text[:min(len(text), 50)], " ") {
+		return false
+	}
+	return true
+}
+
+// stripXMLWrappers extracts readable text from XML-wrapped content.
+// e.g. "<objective>\nDo something\n</objective>" → "Do something"
+func stripXMLWrappers(text string) string {
+	// Try to find content between common wrapper tags.
+	for _, tag := range []string{"objective", "task", "context", "command-message"} {
+		open := "<" + tag + ">"
+		close := "</" + tag + ">"
+		if idx := strings.Index(text, open); idx != -1 {
+			after := text[idx+len(open):]
+			if end := strings.Index(after, close); end != -1 {
+				inner := strings.TrimSpace(after[:end])
+				if inner != "" {
+					return inner
+				}
+			}
+		}
+	}
+	// If text starts with XML but we couldn't extract, skip the first tag line.
+	if strings.HasPrefix(text, "<") {
+		if idx := strings.Index(text, "\n"); idx != -1 {
+			rest := strings.TrimSpace(text[idx+1:])
+			// Strip closing tags too.
+			if ci := strings.Index(rest, "</"); ci != -1 {
+				rest = strings.TrimSpace(rest[:ci])
+			}
+			if rest != "" {
+				return rest
+			}
+		}
+	}
+	return text
 }
