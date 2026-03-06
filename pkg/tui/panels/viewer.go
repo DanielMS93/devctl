@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -21,17 +22,102 @@ var diffModeLabels = []string{"unstaged", "staged", "vs main", "vs origin"}
 // EditorFinishedMsg is sent when the editor process exits.
 type EditorFinishedMsg struct{ Err error }
 
-// ClaudeFinishedMsg is sent when a claude --resume session exits.
-type ClaudeFinishedMsg struct{ Err error }
+// ClaudeLaunchedMsg is sent after attempting to open a Claude session in a new window.
+type ClaudeLaunchedMsg struct {
+	SessionID string
+	Err       error
+}
 
-// LaunchClaudeSession suspends the TUI, runs `claude --resume <sessionID>` in
-// the session's project directory, then resumes the TUI when Claude exits.
+// LaunchClaudeSession opens `claude --resume <sessionID>` in a new terminal window
+// so devctl continues running in the current terminal.
+// Supports iTerm2 and Terminal.app (macOS); falls back to a shell script approach.
 func LaunchClaudeSession(sessionID, projectPath string) tea.Cmd {
-	cmd := exec.Command("claude", "--resume", sessionID)
-	cmd.Dir = projectPath
-	return tea.ExecProcess(cmd, func(err error) tea.Msg {
-		return ClaudeFinishedMsg{Err: err}
-	})
+	return func() tea.Msg {
+		err := openClaudeInNewWindow(sessionID, projectPath)
+		return ClaudeLaunchedMsg{SessionID: sessionID, Err: err}
+	}
+}
+
+// openClaudeInNewWindow launches claude --resume in a docked pane (iTerm2 vertical split)
+// or a new tab (Terminal.app). Uses a login shell so PATH includes ~/go/bin etc.
+// Appends `; exec $SHELL` so the pane stays open after Claude exits.
+func openClaudeInNewWindow(sessionID, projectPath string) error {
+	claudePath := findClaudeBin()
+
+	// Single-quote the path for the shell; path is unlikely to contain ' but handle it.
+	safePath := strings.ReplaceAll(projectPath, `'`, `'"'"'`)
+	// write text types this into the already-running zsh in the new pane, so no
+	// zsh -l -c wrapper needed. Using the full claudePath avoids any PATH issues.
+	// Trailing `; exec $SHELL` keeps the pane open after Claude exits.
+	shellCmd := fmt.Sprintf("cd '%s' && %s --resume %s; exec $SHELL", safePath, claudePath, sessionID)
+
+	switch os.Getenv("TERM_PROGRAM") {
+	case "iTerm.app":
+		return runAppleScript(iterm2SplitScript(shellCmd))
+	default:
+		return runAppleScript(terminalAppTabScript(shellCmd))
+	}
+}
+
+// iterm2SplitScript returns AppleScript that splits the current iTerm2 window
+// vertically and types cmd into the new pane via write text.
+// AppleScript double-quoted strings only require escaping " and \ — single
+// quotes are fine as-is, so no shell-style '\'' escaping is needed here.
+func iterm2SplitScript(shellCmd string) string {
+	// Escape only the characters AppleScript cares about inside "...".
+	escaped := strings.ReplaceAll(shellCmd, `\`, `\\`)
+	escaped = strings.ReplaceAll(escaped, `"`, `\"`)
+	return fmt.Sprintf(`tell application "iTerm2"
+	tell current session of current window
+		set newSession to (split vertically with default profile)
+	end tell
+	tell newSession
+		write text "%s"
+	end tell
+end tell`, escaped)
+}
+
+// terminalAppTabScript returns AppleScript that opens a new tab in Terminal.app.
+func terminalAppTabScript(shellCmd string) string {
+	escaped := strings.ReplaceAll(shellCmd, `\`, `\\`)
+	escaped = strings.ReplaceAll(escaped, `"`, `\"`)
+	return fmt.Sprintf(`tell application "Terminal"
+	activate
+	tell application "System Events" to keystroke "t" using command down
+	delay 0.4
+	do script "%s" in front window
+end tell`, escaped)
+}
+
+// runAppleScript runs an AppleScript via osascript, passing it on stdin to avoid
+// shell-escaping the script itself.
+func runAppleScript(script string) error {
+	cmd := exec.Command("osascript")
+	cmd.Stdin = strings.NewReader(script)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("osascript: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// findClaudeBin returns the full path to the claude binary, checking common locations.
+func findClaudeBin() string {
+	if path, err := exec.LookPath("claude"); err == nil {
+		return path
+	}
+	home, _ := os.UserHomeDir()
+	candidates := []string{
+		filepath.Join(home, ".local", "bin", "claude"),
+		filepath.Join(home, "go", "bin", "claude"),
+		"/usr/local/bin/claude",
+	}
+	for _, p := range candidates {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return "claude"
 }
 
 // ViewerModel displays file content or diff output in a scrollable viewport.
