@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/danielmiessler/devctl/internal/agent"
 	"github.com/danielmiessler/devctl/internal/claude"
 	"github.com/danielmiessler/devctl/internal/dependency"
 	"github.com/danielmiessler/devctl/internal/git"
@@ -19,11 +20,15 @@ import (
 // Manager owns the background goroutines and the event channel.
 // All goroutines must check ctx.Done() and exit cleanly on cancellation.
 type Manager struct {
-	db       *sqlx.DB
-	events   chan tui.StateEvent
-	cancel   context.CancelFunc
-	taskStore *task.TaskStore
-	depStore  *dependency.DepStore
+	db           *sqlx.DB
+	events       chan tui.StateEvent
+	cancel       context.CancelFunc
+	taskStore    *task.TaskStore
+	depStore     *dependency.DepStore
+	idleTracker  *agent.IdleTracker
+	runStore     *agent.AgentRunStore
+	patchStore   *agent.PatchStore
+	runner       *agent.WorkflowRunner
 }
 
 // NewManager creates a Manager. Call Start() to begin background polling.
@@ -35,6 +40,14 @@ func NewManager(db *sqlx.DB) *Manager {
 	if db != nil {
 		m.taskStore = task.NewStore(db)
 		m.depStore = dependency.NewStore(db)
+
+		cfg := agent.LoadConfig()
+		if cfg.Enabled {
+			m.runStore = agent.NewAgentRunStore(db)
+			m.patchStore = agent.NewPatchStore(db)
+			m.idleTracker = agent.NewIdleTracker(cfg)
+			m.runner = agent.NewWorkflowRunner(m.runStore, m.patchStore, cfg)
+		}
 	}
 	return m
 }
@@ -179,6 +192,28 @@ func (m *Manager) pollAllWorktrees(ctx context.Context) tuimsg.StateSnapshot {
 			ts = enriched
 		}
 		states = append(states, ts)
+	}
+
+	// Idle branch detection: check all worktrees for inactivity.
+	if m.idleTracker != nil {
+		commitTimes := make(map[string]time.Time)
+		for _, ws := range states {
+			if ws.RepoPath == "" || ws.Branch == "" {
+				continue
+			}
+			key := ws.RepoPath + ":" + ws.Branch
+			ct, err := git.LastCommitTime(ctx, ws.RepoPath, ws.Branch)
+			if err == nil && !ct.IsZero() {
+				commitTimes[key] = ct
+			}
+		}
+		idleBranches := m.idleTracker.Check(states, commitTimes)
+		for _, ib := range idleBranches {
+			slog.Info("idle branch detected", "repo", ib.RepoPath, "branch", ib.Branch, "idle_since", ib.IdleSince)
+			if m.runner != nil {
+				m.runner.RunAsync(ctx, ib)
+			}
+		}
 	}
 
 	snapshot := tuimsg.StateSnapshot{UpdatedAt: time.Now(), Worktrees: states}
