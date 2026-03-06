@@ -83,10 +83,11 @@ Plans:
   2. `devctl session list` shows all active and historical sessions with status, last activity timestamp, and last command
   3. `devctl jump` opens a fuzzy selector across all active worktree sessions and switches context on selection
   4. Session state persists across `devctl` restarts — sessions started before a restart still appear in `session list`
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 04-01: TBD
+- [ ] 04-01-PLAN.md — Migration 003 (sessions table) + session start/stop/list CLI commands + activity tracking
+- [ ] 04-02-PLAN.md — Extract terminal helpers + devctl jump fuzzy selector + dashboard session enrichment
 
 ### Phase 5: Tasks and Dependencies
 **Goal**: Users can create and link tasks, and the dashboard surfaces which tasks are ready versus blocked based on explicit links and git branch ancestry
@@ -127,6 +128,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 1. Foundation | 0/TBD | Not started | - |
 | 2. Git Integration | 0/7 | Not started | - |
 | 3. Dashboard TUI | 0/2 | Not started | - |
-| 4. Session Management | 0/TBD | Not started | - |
+| 4. Session Management | 0/2 | Not started | - |
 | 5. Tasks and Dependencies | 0/TBD | Not started | - |
 | 6. AI Observability | 0/TBD | Not started | - |
