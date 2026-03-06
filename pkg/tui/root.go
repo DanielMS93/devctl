@@ -100,6 +100,30 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			}
+		case "d":
+			if m.activePanel == PanelRight {
+				if f := m.rightPanel.SelectedFile(); f != "" {
+					if wt := m.leftPanel.SelectedWorktree(); wt != nil {
+						return m, m.viewer.OpenDiff(wt.WorktreePath, f)
+					}
+				}
+			}
+		case "f":
+			if m.activePanel == PanelRight {
+				if f := m.rightPanel.SelectedFile(); f != "" {
+					if wt := m.leftPanel.SelectedWorktree(); wt != nil {
+						return m, m.viewer.Open(wt.WorktreePath, f)
+					}
+				}
+			}
+		case "r":
+			if m.activePanel == PanelRight {
+				if s := m.rightPanel.SelectedSession(); s != nil {
+					return m, panels.LaunchClaudeSession(s.ID, s.ProjectPath)
+				}
+			}
+		case "t":
+			m.logBar.SetStatus("Tasks: coming in Phase 5")
 		}
 
 	case tea.WindowSizeMsg:
@@ -118,10 +142,16 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			slog.Warn("editor exited with error", "err", msg.Err)
 		}
 
-	case panels.ClaudeFinishedMsg:
-		// Claude session exited; TUI is already restored by Bubbletea.
+	case panels.ClaudeLaunchedMsg:
 		if msg.Err != nil {
-			slog.Warn("claude session exited with error", "err", msg.Err)
+			slog.Warn("claude launch failed", "session", msg.SessionID, "err", msg.Err)
+			m.logBar.SetStatus("⚠ could not open terminal window — is Terminal.app or iTerm2 running?")
+		} else {
+			id := msg.SessionID
+			if len(id) > 8 {
+				id = id[:8]
+			}
+			m.logBar.SetStatus("✓ opened claude --resume " + id + " in new window")
 		}
 	}
 
