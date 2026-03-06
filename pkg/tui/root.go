@@ -86,11 +86,18 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.rightPanel.MoveDown()
 			}
 		case "enter":
-			if m.activePanel == PanelRight {
-				selectedFile := m.rightPanel.SelectedFile()
-				wt := m.leftPanel.SelectedWorktree()
-				if selectedFile != "" && wt != nil {
-					return m, m.viewer.Open(wt.WorktreePath, selectedFile)
+			if m.activePanel == PanelLeft {
+				// Dive into the right panel for the selected repo.
+				m.activePanel = PanelRight
+				m.propagateSizes()
+			} else if m.activePanel == PanelRight {
+				if s := m.rightPanel.SelectedSession(); s != nil {
+					// Launch claude --resume in the session's project directory.
+					return m, panels.LaunchClaudeSession(s.ID, s.ProjectPath)
+				} else if f := m.rightPanel.SelectedFile(); f != "" {
+					if wt := m.leftPanel.SelectedWorktree(); wt != nil {
+						return m, m.viewer.Open(wt.WorktreePath, f)
+					}
 				}
 			}
 		}
@@ -107,9 +114,14 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, m.subscribeToStateEvents())
 
 	case panels.EditorFinishedMsg:
-		// Editor has exited; TUI already restored by Bubbletea — nothing to do.
 		if msg.Err != nil {
 			slog.Warn("editor exited with error", "err", msg.Err)
+		}
+
+	case panels.ClaudeFinishedMsg:
+		// Claude session exited; TUI is already restored by Bubbletea.
+		if msg.Err != nil {
+			slog.Warn("claude session exited with error", "err", msg.Err)
 		}
 	}
 

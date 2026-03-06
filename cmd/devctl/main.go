@@ -66,6 +66,10 @@ func main() {
 		Long: `devctl gives you one place to see everything happening across all your
 repos and worktrees — no lost sessions, no forgotten branches, no missed follow-ups.`,
 		SilenceUsage: true,
+		// Running bare `devctl` opens the dashboard directly.
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runDashboard(mgr)
+		},
 		// PersistentPreRunE stores the DB in context so all subcommands can access it
 		// without global state. The db variable is captured from the main() scope above.
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -77,24 +81,33 @@ repos and worktrees — no lost sessions, no forgotten branches, no missed follo
 	root.AddCommand(dashboardCmd(mgr))
 	root.AddCommand(worktreeCmd)
 	root.AddCommand(configCmd)
+	root.AddCommand(repoCmd)
+
+	// Shell completion: worktree create <repo> completes from registered repo names.
+	worktreeCreateCmd.ValidArgsFunction = repoNameCompletion(db)
 
 	if err := root.ExecuteContext(ctx); err != nil {
 		os.Exit(1)
 	}
 }
 
-// dashboardCmd returns the `devctl dashboard` subcommand.
+// runDashboard opens the TUI dashboard. Used by both the bare `devctl` command and `devctl dashboard`.
+func runDashboard(mgr *dashboard.Manager) error {
+	m := tui.NewRootModel(mgr.Events())
+	// v2: AltScreen is set declaratively in View(); do NOT use tea.WithAltScreen().
+	// v2: Use p.Run(), not p.Start() (removed in v2).
+	p := tea.NewProgram(m)
+	_, err := p.Run()
+	return err
+}
+
+// dashboardCmd returns the `devctl dashboard` subcommand (kept for discoverability/scripts).
 func dashboardCmd(mgr *dashboard.Manager) *cobra.Command {
 	return &cobra.Command{
 		Use:   "dashboard",
 		Short: "Open the interactive dashboard",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			m := tui.NewRootModel(mgr.Events())
-			// v2: AltScreen is set declaratively in View(); do NOT use tea.WithAltScreen().
-			// v2: Use p.Run(), not p.Start() (removed in v2).
-			p := tea.NewProgram(m)
-			_, err := p.Run()
-			return err
+			return runDashboard(mgr)
 		},
 	}
 }

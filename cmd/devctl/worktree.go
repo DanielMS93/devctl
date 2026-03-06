@@ -91,10 +91,15 @@ func runWorktreeList(ctx context.Context, db *sqlx.DB) error {
 }
 
 func runWorktreeCreate(ctx context.Context, db *sqlx.DB, repoPath, branch string, newBranch bool) error {
-	// Resolve absolute paths.
-	absRepoPath, err := filepath.Abs(repoPath)
+	// Resolve repo path: accepts repo name (looked up from DB) or filesystem path.
+	absRepoPath, err := resolveRepo(ctx, db, repoPath)
 	if err != nil {
-		return fmt.Errorf("resolve repo path: %w", err)
+		return fmt.Errorf("resolve repo: %w", err)
+	}
+
+	// Validate the resolved path is actually a git repo before touching the DB.
+	if _, err := os.Stat(filepath.Join(absRepoPath, ".git")); err != nil {
+		return fmt.Errorf("%s is not a git repo (no .git found)", absRepoPath)
 	}
 
 	// Auto-register repo if not already tracked.
@@ -224,17 +229,7 @@ func ensureRepo(ctx context.Context, db *sqlx.DB, absPath string) (string, error
 	if err == nil {
 		return id, nil // already tracked
 	}
-	// Not found — insert new repo.
-	id = uuid.New().String()
-	name := filepath.Base(absPath)
-	now := time.Now().Unix()
-	_, err = db.ExecContext(ctx, `
-		INSERT INTO repos (id, path, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)
-	`, id, absPath, name, now, now)
-	if err != nil {
-		return "", err
-	}
-	return id, nil
+	return insertRepo(ctx, db, absPath)
 }
 
 // sanitizeBranch converts a branch name to a filesystem-safe directory name.

@@ -3,12 +3,15 @@ package dashboard
 import (
 	"context"
 	"log/slog"
+	"path/filepath"
 	"time"
 
+	"github.com/danielmiessler/devctl/internal/claude"
 	"github.com/danielmiessler/devctl/internal/git"
 	"github.com/danielmiessler/devctl/pkg/tui"
 	"github.com/danielmiessler/devctl/pkg/tui/tuimsg"
 	"github.com/jmoiron/sqlx"
+	"github.com/spf13/viper"
 )
 
 // Manager owns the background goroutines and the event channel.
@@ -45,23 +48,25 @@ func (m *Manager) Events() <-chan tui.StateEvent {
 	return m.events
 }
 
-// pollLoop emits StateEvents with real git data every 5 seconds.
-// On first iteration it emits cached state immediately, then polls live.
+// pollLoop emits StateEvents every 5 seconds.
+// On startup it emits the DB cache immediately (instant render), then fires a real poll
+// right away so Claude-discovered sessions appear without waiting the full 5s.
 func (m *Manager) pollLoop(ctx context.Context) {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
-	// Emit cached state immediately so TUI renders on startup without waiting 5s.
-	snapshot := m.loadCachedSnapshot(ctx)
-	m.emit(ctx, snapshot)
+	// Phase 1: emit cached DB state instantly so the TUI isn't blank.
+	m.emit(ctx, m.loadCachedSnapshot(ctx))
+
+	// Phase 2: real poll immediately — discovers Claude projects + live git state.
+	m.emit(ctx, m.pollAllWorktrees(ctx))
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			snapshot := m.pollAllWorktrees(ctx)
-			m.emit(ctx, snapshot)
+			m.emit(ctx, m.pollAllWorktrees(ctx))
 		}
 	}
 }
@@ -85,45 +90,89 @@ type worktreeRow struct {
 	RepoPath string `db:"repo_path"`
 }
 
-// pollAllWorktrees queries all tracked worktrees, polls git state for each,
-// persists results to worktree_state, and returns a populated StateSnapshot.
+// sessionThreshold reads the configurable active-session threshold.
+func sessionThreshold() time.Duration {
+	min := viper.GetInt("session.active_threshold_minutes")
+	if min <= 0 {
+		min = 20
+	}
+	return time.Duration(min) * time.Minute
+}
+
+// pollAllWorktrees combines DB-tracked worktrees and Claude-auto-discovered projects,
+// polls git state for each, and returns a populated StateSnapshot.
 func (m *Manager) pollAllWorktrees(ctx context.Context) tuimsg.StateSnapshot {
-	if m.db == nil {
-		return tuimsg.StateSnapshot{UpdatedAt: time.Now()}
-	}
-	rows, err := m.db.QueryxContext(ctx, `
-        SELECT w.id, w.path, w.branch, r.path as repo_path
-        FROM worktrees w JOIN repos r ON r.id = w.repo_id
-    `)
-	if err != nil {
-		slog.Error("poll: query worktrees", "err", err)
-		return tuimsg.StateSnapshot{UpdatedAt: time.Now()}
-	}
-	defer rows.Close()
-
+	threshold := sessionThreshold()
+	seenPaths := make(map[string]bool)
 	var states []tuimsg.WorktreeState
-	for rows.Next() {
-		var row worktreeRow
-		if err := rows.StructScan(&row); err != nil {
-			slog.Error("poll: scan worktree row", "err", err)
-			continue
-		}
 
-		gitState, err := git.PollState(ctx, row.Path)
+	// 1. DB-tracked worktrees — existing registered entries with full git state.
+	if m.db != nil {
+		rows, err := m.db.QueryxContext(ctx, `
+            SELECT w.id, w.path, w.branch, r.path as repo_path
+            FROM worktrees w JOIN repos r ON r.id = w.repo_id
+        `)
 		if err != nil {
-			slog.Warn("poll: git.PollState failed", "path", row.Path, "err", err)
+			slog.Error("poll: query worktrees", "err", err)
+		} else {
+			defer rows.Close()
+			for rows.Next() {
+				var row worktreeRow
+				if err := rows.StructScan(&row); err != nil {
+					slog.Error("poll: scan worktree row", "err", err)
+					continue
+				}
+				gitState, err := git.PollState(ctx, row.Path)
+				if err != nil {
+					slog.Warn("poll: git.PollState failed", "path", row.Path, "err", err)
+					continue
+				}
+				ts := mapGitState(row.ID, gitState)
+				ts.RepoPath = row.RepoPath
+				ts.RepoName = filepath.Base(row.RepoPath)
+				if sessions, err := claude.ScanSessionsWithThreshold(row.Path, threshold); err == nil {
+					ts.Sessions = mapClaudeSessions(sessions)
+				}
+				seenPaths[row.Path] = true
+				states = append(states, ts)
+				m.persistState(ctx, row.ID, ts)
+			}
+		}
+	}
+
+	// 2. Claude-auto-discovered projects not already covered by the DB.
+	claudeProjects, err := claude.ScanAllProjects(threshold)
+	if err != nil {
+		slog.Warn("poll: claude.ScanAllProjects failed", "err", err)
+	}
+	for _, proj := range claudeProjects {
+		if seenPaths[proj.RepoPath] {
 			continue
 		}
+		seenPaths[proj.RepoPath] = true
 
-		ts := mapGitState(row.ID, gitState)
+		ts := tuimsg.WorktreeState{
+			WorktreeID:   "claude:" + proj.RepoPath,
+			WorktreePath: proj.RepoPath,
+			RepoPath:     proj.RepoPath,
+			RepoName:     filepath.Base(proj.RepoPath),
+			Branch:       filepath.Base(proj.RepoPath), // fallback; overwritten by git below
+			Behind:       -1,
+			Sessions:     mapClaudeSessions(proj.Sessions),
+			PolledAt:     time.Now(),
+		}
+		// Enrich with live git state if the path exists on disk.
+		if gitState, err := git.PollState(ctx, proj.RepoPath); err == nil {
+			enriched := mapGitState("claude:"+proj.RepoPath, gitState)
+			enriched.RepoPath = proj.RepoPath
+			enriched.RepoName = filepath.Base(proj.RepoPath)
+			enriched.Sessions = ts.Sessions
+			ts = enriched
+		}
 		states = append(states, ts)
-		m.persistState(ctx, row.ID, ts)
 	}
 
-	return tuimsg.StateSnapshot{
-		UpdatedAt: time.Now(),
-		Worktrees: states,
-	}
+	return tuimsg.StateSnapshot{UpdatedAt: time.Now(), Worktrees: states}
 }
 
 // mapGitState converts git.WorktreeState to tuimsg.WorktreeState.
@@ -149,6 +198,23 @@ func mapGitState(worktreeID string, gs git.WorktreeState) tuimsg.WorktreeState {
 		ChangedFiles: changed,
 		PolledAt:     time.Now(),
 	}
+}
+
+// mapClaudeSessions converts claude.Session slice to tuimsg.ClaudeSession slice.
+func mapClaudeSessions(sessions []claude.Session) []tuimsg.ClaudeSession {
+	result := make([]tuimsg.ClaudeSession, len(sessions))
+	for i, s := range sessions {
+		result[i] = tuimsg.ClaudeSession{
+			ID:           s.ID,
+			ProjectPath:  s.ProjectPath,
+			Slug:         s.Slug,
+			LastActivity: s.LastActivity,
+			IsActive:     s.IsActive,
+			LastMessage:  s.LastMessage,
+			RecentFiles:  s.RecentFiles,
+		}
+	}
+	return result
 }
 
 // persistState writes polled state to the worktree_state cache table.

@@ -21,6 +21,19 @@ var diffModeLabels = []string{"unstaged", "staged", "vs main", "vs origin"}
 // EditorFinishedMsg is sent when the editor process exits.
 type EditorFinishedMsg struct{ Err error }
 
+// ClaudeFinishedMsg is sent when a claude --resume session exits.
+type ClaudeFinishedMsg struct{ Err error }
+
+// LaunchClaudeSession suspends the TUI, runs `claude --resume <sessionID>` in
+// the session's project directory, then resumes the TUI when Claude exits.
+func LaunchClaudeSession(sessionID, projectPath string) tea.Cmd {
+	cmd := exec.Command("claude", "--resume", sessionID)
+	cmd.Dir = projectPath
+	return tea.ExecProcess(cmd, func(err error) tea.Msg {
+		return ClaudeFinishedMsg{Err: err}
+	})
+}
+
 // ViewerModel displays file content or diff output in a scrollable viewport.
 // It overlays the right panel area; root.go shows it when viewer.Visible is true.
 type ViewerModel struct {

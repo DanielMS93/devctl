@@ -7,6 +7,17 @@ package tuimsg
 
 import "time"
 
+// ClaudeSession represents one Claude Code session for a worktree's repo.
+type ClaudeSession struct {
+	ID           string
+	ProjectPath  string
+	Slug         string
+	LastActivity time.Time
+	IsActive     bool
+	LastMessage  string
+	RecentFiles  []string
+}
+
 // ChangedFile represents one file with staged/unstaged status characters.
 // Status chars: 'M'=modified, 'A'=added, 'D'=deleted, 'R'=renamed, '.'=unmodified.
 type ChangedFile struct {
@@ -20,6 +31,8 @@ type ChangedFile struct {
 type WorktreeState struct {
 	WorktreeID   string
 	WorktreePath string
+	RepoPath     string // root repo path (may differ from WorktreePath for git worktrees)
+	RepoName     string // basename of RepoPath, used for left panel grouping
 	Branch       string
 	Ahead        int
 	Behind       int // -1 = no upstream tracking branch
@@ -28,6 +41,7 @@ type WorktreeState struct {
 	Untracked    int
 	ChangedFiles []ChangedFile
 	PolledAt     time.Time
+	Sessions     []ClaudeSession // Claude Code sessions for this worktree's repo
 }
 
 // StateSnapshot is the point-in-time snapshot of all tracked state delivered to the TUI.

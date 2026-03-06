@@ -2,19 +2,30 @@ package panels
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"charm.land/lipgloss/v2"
 	"github.com/danielmiessler/devctl/pkg/tui/tuimsg"
 )
 
-// RepoPanel is the left pane showing the worktree list with git state.
+// leftItem is one row in the left panel's flat render list.
+// Headers are repo names (not selectable); worktree rows are selectable.
+type leftItem struct {
+	isHeader bool
+	label    string               // repo name, for header items
+	wt       tuimsg.WorktreeState // worktree data, for non-header items
+}
+
+// RepoPanel is the left pane showing repos grouped with their worktrees.
 type RepoPanel struct {
-	width     int
-	height    int
-	worktrees []tuimsg.WorktreeState
-	selected  int // index into worktrees
-	focused   bool
+	width    int
+	height   int
+	focused  bool
+	selected int // index among selectable items only
+
+	items     []leftItem // flat render list (headers + worktree rows)
+	selectIdx []int      // positions in items[] that are selectable
 }
 
 func NewRepoPanel() RepoPanel { return RepoPanel{} }
@@ -24,42 +35,39 @@ func (p *RepoPanel) SetSize(width, height int) {
 	p.height = height
 }
 
+func (p *RepoPanel) SetFocused(focused bool) { p.focused = focused }
+
 func (p *RepoPanel) SetState(e tuimsg.StateEvent) {
-	p.worktrees = e.Snapshot.Worktrees
-	// Clamp selection to valid range after state update
-	if p.selected >= len(p.worktrees) && len(p.worktrees) > 0 {
-		p.selected = len(p.worktrees) - 1
+	p.items, p.selectIdx = buildLeftItems(e.Snapshot.Worktrees)
+	if p.selected >= len(p.selectIdx) && len(p.selectIdx) > 0 {
+		p.selected = len(p.selectIdx) - 1
 	}
 }
 
-func (p *RepoPanel) SetFocused(focused bool) {
-	p.focused = focused
-}
-
-// MoveUp moves the selection cursor up by one row. No-op at top.
 func (p *RepoPanel) MoveUp() {
 	if p.selected > 0 {
 		p.selected--
 	}
 }
 
-// MoveDown moves the selection cursor down by one row. No-op at bottom.
 func (p *RepoPanel) MoveDown() {
-	if p.selected < len(p.worktrees)-1 {
+	if p.selected < len(p.selectIdx)-1 {
 		p.selected++
 	}
 }
 
-// SelectedWorktree returns the currently selected WorktreeState, or nil if empty.
+// SelectedWorktree returns the currently selected WorktreeState, or nil.
 func (p *RepoPanel) SelectedWorktree() *tuimsg.WorktreeState {
-	if len(p.worktrees) == 0 || p.selected < 0 || p.selected >= len(p.worktrees) {
+	if len(p.selectIdx) == 0 {
 		return nil
 	}
-	wt := p.worktrees[p.selected]
+	if p.selected < 0 || p.selected >= len(p.selectIdx) {
+		return nil
+	}
+	wt := p.items[p.selectIdx[p.selected]].wt
 	return &wt
 }
 
-// SelectedIndex returns the current selection index.
 func (p *RepoPanel) SelectedIndex() int { return p.selected }
 
 func (p RepoPanel) View() string {
@@ -68,29 +76,33 @@ func (p RepoPanel) View() string {
 		borderColor = lipgloss.Color("69")
 	}
 
-	// Inner dimensions account for border (2 chars each side)
 	innerW := p.width - 4
-	if innerW < 1 {
-		innerW = 1
+	if innerW < 10 {
+		innerW = 10
 	}
 
 	var rows []string
-	rows = append(rows, lipgloss.NewStyle().Bold(true).Render("Worktrees"))
+	rows = append(rows, lipgloss.NewStyle().Bold(true).Render("Repos & Sessions"))
 	rows = append(rows, "")
 
-	if len(p.worktrees) == 0 {
-		rows = append(rows, lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(
-			"(no worktrees tracked)\nUse: devctl worktree create",
-		))
+	if len(p.items) == 0 {
+		rows = append(rows, lipgloss.NewStyle().Foreground(lipgloss.Color("240")).
+			Render("Scanning ~/.claude/projects/ …"))
 	} else {
-		for i, wt := range p.worktrees {
-			row := renderWorktreeRow(wt, i == p.selected, innerW)
-			rows = append(rows, row)
+		selItemIdx := -1
+		if len(p.selectIdx) > 0 && p.selected < len(p.selectIdx) {
+			selItemIdx = p.selectIdx[p.selected]
+		}
+		for i, item := range p.items {
+			if item.isHeader {
+				rows = append(rows, renderRepoHeader(item.label, innerW))
+			} else {
+				rows = append(rows, renderWorktreeRow(item.wt, i == selItemIdx, p.focused, innerW))
+			}
 		}
 	}
 
 	content := strings.Join(rows, "\n")
-
 	style := lipgloss.NewStyle().
 		Width(p.width).
 		Height(p.height).
@@ -100,51 +112,112 @@ func (p RepoPanel) View() string {
 	return style.Render(content)
 }
 
-func renderWorktreeRow(wt tuimsg.WorktreeState, selected bool, width int) string {
+// buildLeftItems groups worktrees by RepoPath and builds a flat render list.
+func buildLeftItems(worktrees []tuimsg.WorktreeState) (items []leftItem, selectIdx []int) {
+	type repoGroup struct {
+		name string
+		key  string
+		wts  []tuimsg.WorktreeState
+	}
+
+	seen := make(map[string]*repoGroup)
+	var order []string
+
+	for _, wt := range worktrees {
+		key := wt.RepoPath
+		if key == "" {
+			key = wt.WorktreePath
+		}
+		name := wt.RepoName
+		if name == "" {
+			name = filepath.Base(key)
+		}
+		if _, ok := seen[key]; !ok {
+			seen[key] = &repoGroup{name: name, key: key}
+			order = append(order, key)
+		}
+		seen[key].wts = append(seen[key].wts, wt)
+	}
+
+	for _, key := range order {
+		g := seen[key]
+		items = append(items, leftItem{isHeader: true, label: g.name})
+		for _, wt := range g.wts {
+			selectIdx = append(selectIdx, len(items))
+			items = append(items, leftItem{wt: wt})
+		}
+	}
+	return items, selectIdx
+}
+
+// renderRepoHeader renders a repo group header row.
+func renderRepoHeader(name string, width int) string {
+	label := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("75")). // bright blue
+		Render(name)
+	return label
+}
+
+// renderWorktreeRow renders a single worktree row as plain text layout, then
+// applies selection highlight. Critically: no ANSI-styled strings inside
+// fmt.Sprintf — that breaks width calculations and causes wrapping.
+func renderWorktreeRow(wt tuimsg.WorktreeState, selected, focused bool, width int) string {
 	cursor := "  "
 	if selected {
 		cursor = "> "
 	}
 
-	// Ahead/behind badge
-	var badge string
-	if wt.Behind == -1 {
-		badge = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("no upstream")
-	} else {
-		badge = lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Render(
-			fmt.Sprintf("+%d/-%d", wt.Ahead, wt.Behind),
-		)
-	}
+	branch := truncate(wt.Branch, 20)
+	stats := buildStats(wt)
 
-	// Status counts (only show non-zero)
-	var counts []string
-	if wt.Staged > 0 {
-		counts = append(counts, lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Render(
-			fmt.Sprintf("S:%d", wt.Staged),
-		))
-	}
-	if wt.Unstaged > 0 {
-		counts = append(counts, lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Render(
-			fmt.Sprintf("U:%d", wt.Unstaged),
-		))
-	}
-	if wt.Untracked > 0 {
-		counts = append(counts, lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(
-			fmt.Sprintf("?:%d", wt.Untracked),
-		))
-	}
-
-	statusStr := strings.Join(counts, " ")
-	line := fmt.Sprintf("%s%-20s  %s  %s", cursor, truncate(wt.Branch, 20), badge, statusStr)
+	// Plain-text row; all parts are unstyled strings so fmt.Sprintf widths are correct.
+	line := fmt.Sprintf("  %s%-20s  %s", cursor, branch, stats)
 
 	if selected {
 		return lipgloss.NewStyle().
-			Background(lipgloss.Color("17")). // dark blue
+			Background(lipgloss.Color("17")).
 			Bold(true).
 			Width(width).
 			Render(line)
 	}
 	return line
+}
+
+// buildStats produces a plain-text stats string for a worktree row.
+// No ANSI codes — safe to use inside fmt.Sprintf.
+func buildStats(wt tuimsg.WorktreeState) string {
+	var parts []string
+	if wt.Behind == -1 {
+		parts = append(parts, "no upstream")
+	} else {
+		parts = append(parts, fmt.Sprintf("+%d/-%d", wt.Ahead, wt.Behind))
+	}
+	if wt.Staged > 0 {
+		parts = append(parts, fmt.Sprintf("S:%d", wt.Staged))
+	}
+	if wt.Unstaged > 0 {
+		parts = append(parts, fmt.Sprintf("U:%d", wt.Unstaged))
+	}
+	if wt.Untracked > 0 {
+		parts = append(parts, fmt.Sprintf("?:%d", wt.Untracked))
+	}
+	active := countActiveSessions(wt)
+	if active > 0 {
+		parts = append(parts, fmt.Sprintf("◆%d", active))
+	}
+	return strings.Join(parts, " ")
+}
+
+// countActiveSessions returns the number of active Claude sessions for a worktree.
+func countActiveSessions(wt tuimsg.WorktreeState) int {
+	n := 0
+	for _, s := range wt.Sessions {
+		if s.IsActive {
+			n++
+		}
+	}
+	return n
 }
 
 // truncate shortens s to max length, adding "…" if truncated.
