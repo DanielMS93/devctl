@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-03-05)
 ## Current Position
 
 Phase: 5 of 6 (Tasks and Dependencies) — IN PROGRESS
-Plan: 2 of 4 in current phase — COMPLETE
-Status: Plan 05-02 complete; task and deps CLI commands with cycle detection
-Last activity: 2026-03-06 — Plan 05-02 complete; Cobra subcommands for tasks CRUD and deps management
+Plan: 3 of 4 in current phase — COMPLETE
+Status: Plan 05-03 complete; DAG resolver with Kahn's algorithm and git ancestry check
+Last activity: 2026-03-06 — Plan 05-03 complete; resolver, 12 TDD tests, IsBranchMerged
 
-Progress: [████████░░] 50%
+Progress: [█████████░] 55%
 
 ## Performance Metrics
 
@@ -40,6 +40,7 @@ Progress: [████████░░] 50%
 | Phase 02-git-integration P06 | 2 | 2 tasks | 5 files |
 | Phase 03-dashboard-tui P01 | 1 min | 2 tasks | 2 files |
 | Phase 05-tasks-and-dependencies P01 | 3 min | 2 tasks | 4 files |
+| Phase 05-tasks-and-dependencies P03 | 2 min | 2 tasks | 3 files |
 | Phase 05-tasks-and-dependencies P02 | 2 min | 2 tasks | 3 files |
 
 ## Accumulated Context
@@ -84,6 +85,8 @@ Recent decisions affecting current work:
 - [03-01] Styled indicator rendered inline rather than plain-text-then-recolor to keep ANSI handling simple
 - [05-01] Migration 004 (not 003): 003 reserved for Phase 04 session management
 - [05-01] Task state stores only queued/running/completed; blocked is computed by dependency resolver
+- [05-03] Branch ref not found returns true (assumed merged post-cleanup) to avoid false blocking
+- [05-03] branchMerged map uses explicit false to block; missing key means no branch check needed
 - [05-02] Partial update via Get-then-Update: CLI fetches current task, merges flags, calls Update with full record
 - [05-02] Cycle detection in CLI layer (deps.go) not store: keeps DepStore as pure data layer
 - [05-01] TaskStore.Get supports UUID prefix match for ergonomic CLI short IDs
@@ -100,5 +103,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-06
-Stopped at: Completed 05-02-PLAN.md
+Stopped at: Completed 05-03-PLAN.md
 Resume file: None
