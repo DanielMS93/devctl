@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS task_deps;
+DROP TABLE IF EXISTS tasks;
