@@ -9,12 +9,12 @@ See: .planning/PROJECT.md (updated 2026-03-05)
 
 ## Current Position
 
-Phase: 5 of 6 (Tasks and Dependencies) — IN PROGRESS
-Plan: 3 of 4 in current phase — COMPLETE
-Status: Plan 05-03 complete; DAG resolver with Kahn's algorithm and git ancestry check
-Last activity: 2026-03-06 — Plan 05-03 complete; resolver, 12 TDD tests, IsBranchMerged
+Phase: 5 of 6 (Tasks and Dependencies) — COMPLETE
+Plan: 4 of 4 in current phase — COMPLETE
+Status: Phase 05 complete; task graph visualization in dashboard with DAG rendering and t-key toggle
+Last activity: 2026-03-06 — Plan 05-04 complete; TaskGraphPanel, Manager integration, t-key wiring
 
-Progress: [█████████░] 55%
+Progress: [██████████] 60%
 
 ## Performance Metrics
 
@@ -42,6 +42,7 @@ Progress: [█████████░] 55%
 | Phase 05-tasks-and-dependencies P01 | 3 min | 2 tasks | 4 files |
 | Phase 05-tasks-and-dependencies P03 | 2 min | 2 tasks | 3 files |
 | Phase 05-tasks-and-dependencies P02 | 2 min | 2 tasks | 3 files |
+| Phase 05-tasks-and-dependencies P04 | 3 min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -87,6 +88,9 @@ Recent decisions affecting current work:
 - [05-01] Task state stores only queued/running/completed; blocked is computed by dependency resolver
 - [05-03] Branch ref not found returns true (assumed merged post-cleanup) to avoid false blocking
 - [05-03] branchMerged map uses explicit false to block; missing key means no branch check needed
+- [05-04] Manager owns TaskStore/DepStore initialization and resolves task DAG on each poll cycle (same pattern as git state polling)
+- [05-04] Panel overlay pattern: showTaskGraph bool + View() conditional swaps right panel content
+- [05-04] Fixed 24-char box width per layer for clean column alignment in task graph rendering
 - [05-02] Partial update via Get-then-Update: CLI fetches current task, merges flags, calls Update with full record
 - [05-02] Cycle detection in CLI layer (deps.go) not store: keeps DepStore as pure data layer
 - [05-01] TaskStore.Get supports UUID prefix match for ergonomic CLI short IDs
@@ -97,11 +101,10 @@ None yet.
 
 ### Blockers/Concerns
 
-- Phase 5: TUI graph layout for dependency visualization has limited prior art in Bubbletea; needs research during planning
 - Phase 6: Claude Code session file/process structure may have evolved since training cutoff; fsnotify macOS kqueue stability needs verification; both need research during planning
 
 ## Session Continuity
 
 Last session: 2026-03-06
-Stopped at: Completed 05-03-PLAN.md
+Stopped at: Completed 05-04-PLAN.md (Phase 05 complete)
 Resume file: None
