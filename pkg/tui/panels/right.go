@@ -270,8 +270,12 @@ func renderSessionRow(s tuimsg.ClaudeSession, selected bool, width int) string {
 		statusLen = 6 // "○ idle"
 	}
 
-	// Prefer slug over hex ID — more recognizable.
-	label := s.Slug
+	// Use last message as the primary label (more descriptive than slug/ID).
+	// Fall back to slug, then truncated ID.
+	label := cleanSummary(s.LastMessage)
+	if label == "" {
+		label = s.Slug
+	}
 	if label == "" {
 		label = s.ID
 		if len(label) > 8 {
@@ -280,6 +284,15 @@ func renderSessionRow(s tuimsg.ClaudeSession, selected bool, width int) string {
 	}
 
 	age := formatAge(s.LastActivity)
+
+	// Truncate label to fit: width - cursor(2) - marker - space(1) - age - gap(2)
+	maxLabel := width - 2 - statusLen - 1 - len(age) - 2
+	if maxLabel < 20 {
+		maxLabel = 20
+	}
+	if len(label) > maxLabel {
+		label = label[:maxLabel-1] + "…"
+	}
 
 	// Line 1: cursor + marker + space + label ... age (right-aligned)
 	leftText := fmt.Sprintf("%s%s %s", cursor, statusMarker, label)
@@ -291,16 +304,11 @@ func renderSessionRow(s tuimsg.ClaudeSession, selected bool, width int) string {
 	}
 	header := leftText + strings.Repeat(" ", gap) + age
 
-	// Line 2: summary message (indented, dim, single line)
-	msg := cleanSummary(s.LastMessage)
-	maxMsg := width - 6
-	if maxMsg < 20 {
-		maxMsg = 20
+	// Line 2 (optional): slug as dim subtitle — only if slug exists and differs from label.
+	var subtitleLine string
+	if s.Slug != "" && s.Slug != label {
+		subtitleLine = dim.Render(fmt.Sprintf("    %s", s.Slug))
 	}
-	if len(msg) > maxMsg {
-		msg = msg[:maxMsg-1] + "…"
-	}
-	msgLine := dim.Render(fmt.Sprintf("    %s", msg))
 
 	// Line 3 (optional): current tool activity for active sessions.
 	var toolLine string
@@ -320,13 +328,18 @@ func renderSessionRow(s tuimsg.ClaudeSession, selected bool, width int) string {
 	if selected {
 		hl := lipgloss.NewStyle().Background(lipgloss.Color("17")).Bold(true).Width(width)
 		header = hl.Render(header)
-		msgLine = hl.Render(fmt.Sprintf("    %s", msg))
+		if subtitleLine != "" {
+			subtitleLine = hl.Render(fmt.Sprintf("    %s", s.Slug))
+		}
 		if toolLine != "" {
 			toolLine = hl.Render(fmt.Sprintf("    [%s] %s", s.CurrentTool, s.CurrentCommand))
 		}
 	}
 
-	result := header + "\n" + msgLine
+	result := header
+	if subtitleLine != "" {
+		result += "\n" + subtitleLine
+	}
 	if toolLine != "" {
 		result += "\n" + toolLine
 	}

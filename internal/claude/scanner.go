@@ -144,6 +144,10 @@ func ScanSessionsWithThreshold(repoPath string, threshold time.Duration) ([]Sess
 		id := strings.TrimSuffix(entry.Name(), ".jsonl")
 		filePath := filepath.Join(dir, entry.Name())
 		lastMsg, slug, recentFiles, extras := parseJSONL(filePath)
+		// Skip metadata-only files (file-history-snapshot, progress) — not real sessions.
+		if lastMsg == "" && slug == "" && len(recentFiles) == 0 {
+			continue
+		}
 		lastActivity := info.ModTime()
 
 		sessions = append(sessions, Session{
@@ -164,7 +168,21 @@ func ScanSessionsWithThreshold(repoPath string, threshold time.Duration) ([]Sess
 		return sessions[i].LastActivity.After(sessions[j].LastActivity)
 	})
 
-	return sessions, nil
+	// Deduplicate by slug — resumed sessions create new JSONL files but keep
+	// the same slug. Keep only the most recent (already sorted by activity).
+	seen := make(map[string]bool)
+	deduped := sessions[:0]
+	for _, s := range sessions {
+		if s.Slug != "" {
+			if seen[s.Slug] {
+				continue
+			}
+			seen[s.Slug] = true
+		}
+		deduped = append(deduped, s)
+	}
+
+	return deduped, nil
 }
 
 // IsActive reports whether a session is active given a threshold duration.
@@ -337,6 +355,24 @@ func parseJSONL(path string) (lastMessage, slug string, recentFiles []string, ex
 		return "", "", nil, sessionExtras{}
 	}
 
+	// Check if this is a real session (has user or assistant entries).
+	// Files with only file-history-snapshot/progress entries are metadata, not sessions.
+	hasSessionContent := false
+	for _, line := range lines {
+		var obj map[string]any
+		if json.Unmarshal([]byte(line), &obj) != nil {
+			continue
+		}
+		t, _ := obj["type"].(string)
+		if t == "user" || t == "assistant" {
+			hasSessionContent = true
+			break
+		}
+	}
+	if !hasSessionContent {
+		return "", "", nil, sessionExtras{}
+	}
+
 	// Extract slug from last line (present on every entry).
 	var lastObj map[string]any
 	if json.Unmarshal([]byte(lines[len(lines)-1]), &lastObj) == nil {
@@ -381,7 +417,40 @@ func parseJSONL(path string) (lastMessage, slug string, recentFiles []string, ex
 		}
 	}
 
-	// Fallback: use slug when no user text found.
+	// Fallback: try last assistant text output (what Claude said last).
+	if lastMessage == "" {
+		for i := len(lines) - 1; i >= 0; i-- {
+			var obj map[string]any
+			if json.Unmarshal([]byte(lines[i]), &obj) != nil {
+				continue
+			}
+			msg, _ := obj["message"].(map[string]any)
+			role, _ := msg["role"].(string)
+			if role != "assistant" {
+				continue
+			}
+			content, _ := msg["content"].([]any)
+			for _, c := range content {
+				cm, _ := c.(map[string]any)
+				if cm["type"] != "text" {
+					continue
+				}
+				if text, _ := cm["text"].(string); text != "" {
+					text = strings.TrimSpace(text)
+					if len(text) > 120 {
+						text = text[:120]
+					}
+					lastMessage = text
+					break
+				}
+			}
+			if lastMessage != "" {
+				break
+			}
+		}
+	}
+
+	// Final fallback: use slug.
 	if lastMessage == "" {
 		lastMessage = slug
 	}
@@ -438,10 +507,12 @@ func isUsefulMessage(text string) bool {
 		"tool loaded.",
 		"clear",
 		"continue",
+		"continue from where you left off.",
 		"yes",
 		"y",
 		"ok",
 		"approved",
+		"[request interrupted by user for tool use]",
 	}
 	for _, s := range skip {
 		if lower == s {
