@@ -84,6 +84,7 @@ repos and worktrees — no lost sessions, no forgotten branches, no missed follo
 	root.AddCommand(repoCmd)
 	root.AddCommand(taskCmd)
 	root.AddCommand(depsCmd)
+	root.AddCommand(agentCmd)
 
 	// Shell completion: worktree create <repo> completes from registered repo names.
 	worktreeCreateCmd.ValidArgsFunction = repoNameCompletion(db)

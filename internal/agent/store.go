@@ -256,3 +256,18 @@ func (s *PatchStore) SetReverted(ctx context.Context, id string) error {
 	}
 	return nil
 }
+
+// UpdatePatchData updates the raw patch content for a patch.
+func (s *PatchStore) UpdatePatchData(ctx context.Context, id, patchData string) error {
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE agent_patches SET patch_data = ? WHERE id = ?`, patchData, id,
+	)
+	if err != nil {
+		return fmt.Errorf("agent patch update data: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("agent patch not found: %s", id)
+	}
+	return nil
+}
