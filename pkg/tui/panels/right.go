@@ -175,12 +175,12 @@ func (p DetailPanel) viewMain(innerW int) string {
 	rows = append(rows, "")
 	var hints []string
 	if ns > 0 {
-		hints = append(hints, "Enter=launch session")
+		hints = append(hints, "r=resume session")
 	}
 	if nf > 0 {
-		hints = append(hints, "Enter=open file")
+		hints = append(hints, "d=diff  f=file  enter=open")
 	}
-	hints = append(hints, "Tab=switch panel")
+	hints = append(hints, "tab=switch panel")
 	rows = append(rows, dim.Render(strings.Join(hints, "   ")))
 
 	return strings.Join(rows, "\n")
