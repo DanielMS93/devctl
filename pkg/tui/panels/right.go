@@ -302,13 +302,35 @@ func renderSessionRow(s tuimsg.ClaudeSession, selected bool, width int) string {
 	}
 	msgLine := dim.Render(fmt.Sprintf("    %s", msg))
 
+	// Line 3 (optional): current tool activity for active sessions.
+	var toolLine string
+	if s.CurrentTool != "" {
+		toolStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Faint(true) // dim yellow
+		target := s.CurrentCommand
+		maxTarget := width - 10
+		if maxTarget < 20 {
+			maxTarget = 20
+		}
+		if len(target) > maxTarget {
+			target = target[:maxTarget-1] + "…"
+		}
+		toolLine = toolStyle.Render(fmt.Sprintf("    [%s] %s", s.CurrentTool, target))
+	}
+
 	if selected {
 		hl := lipgloss.NewStyle().Background(lipgloss.Color("17")).Bold(true).Width(width)
 		header = hl.Render(header)
 		msgLine = hl.Render(fmt.Sprintf("    %s", msg))
+		if toolLine != "" {
+			toolLine = hl.Render(fmt.Sprintf("    [%s] %s", s.CurrentTool, s.CurrentCommand))
+		}
 	}
 
-	return header + "\n" + msgLine
+	result := header + "\n" + msgLine
+	if toolLine != "" {
+		result += "\n" + toolLine
+	}
+	return result
 }
 
 // cleanSummary strips markdown formatting and other noise from session messages.

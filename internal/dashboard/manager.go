@@ -313,13 +313,15 @@ func mapClaudeSessions(sessions []claude.Session) []tuimsg.ClaudeSession {
 	result := make([]tuimsg.ClaudeSession, len(sessions))
 	for i, s := range sessions {
 		result[i] = tuimsg.ClaudeSession{
-			ID:           s.ID,
-			ProjectPath:  s.ProjectPath,
-			Slug:         s.Slug,
-			LastActivity: s.LastActivity,
-			IsActive:     s.IsActive,
-			LastMessage:  s.LastMessage,
-			RecentFiles:  s.RecentFiles,
+			ID:             s.ID,
+			ProjectPath:    s.ProjectPath,
+			Slug:           s.Slug,
+			LastActivity:   s.LastActivity,
+			IsActive:       s.IsActive,
+			LastMessage:    s.LastMessage,
+			RecentFiles:    s.RecentFiles,
+			CurrentTool:    s.CurrentTool,
+			CurrentCommand: s.CurrentCommand,
 		}
 	}
 	return result

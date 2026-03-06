@@ -9,13 +9,15 @@ import "time"
 
 // ClaudeSession represents one Claude Code session for a worktree's repo.
 type ClaudeSession struct {
-	ID           string
-	ProjectPath  string
-	Slug         string
-	LastActivity time.Time
-	IsActive     bool
-	LastMessage  string
-	RecentFiles  []string
+	ID             string
+	ProjectPath    string
+	Slug           string
+	LastActivity   time.Time
+	IsActive       bool
+	LastMessage    string
+	RecentFiles    []string
+	CurrentTool    string // e.g. "Bash", "Read", "Write", "Edit"
+	CurrentCommand string // target being operated on (file path or truncated command)
 }
 
 // ChangedFile represents one file with staged/unstaged status characters.
