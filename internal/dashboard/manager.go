@@ -7,7 +7,9 @@ import (
 	"time"
 
 	"github.com/danielmiessler/devctl/internal/claude"
+	"github.com/danielmiessler/devctl/internal/dependency"
 	"github.com/danielmiessler/devctl/internal/git"
+	"github.com/danielmiessler/devctl/internal/task"
 	"github.com/danielmiessler/devctl/pkg/tui"
 	"github.com/danielmiessler/devctl/pkg/tui/tuimsg"
 	"github.com/jmoiron/sqlx"
@@ -17,17 +19,24 @@ import (
 // Manager owns the background goroutines and the event channel.
 // All goroutines must check ctx.Done() and exit cleanly on cancellation.
 type Manager struct {
-	db     *sqlx.DB
-	events chan tui.StateEvent
-	cancel context.CancelFunc
+	db       *sqlx.DB
+	events   chan tui.StateEvent
+	cancel   context.CancelFunc
+	taskStore *task.TaskStore
+	depStore  *dependency.DepStore
 }
 
 // NewManager creates a Manager. Call Start() to begin background polling.
 func NewManager(db *sqlx.DB) *Manager {
-	return &Manager{
+	m := &Manager{
 		db:     db,
 		events: make(chan tui.StateEvent, 32),
 	}
+	if db != nil {
+		m.taskStore = task.NewStore(db)
+		m.depStore = dependency.NewStore(db)
+	}
+	return m
 }
 
 // Start launches background goroutines. ctx is the root application context.
@@ -172,7 +181,106 @@ func (m *Manager) pollAllWorktrees(ctx context.Context) tuimsg.StateSnapshot {
 		states = append(states, ts)
 	}
 
-	return tuimsg.StateSnapshot{UpdatedAt: time.Now(), Worktrees: states}
+	snapshot := tuimsg.StateSnapshot{UpdatedAt: time.Now(), Worktrees: states}
+
+	// Resolve task graph if DB is available.
+	if m.taskStore != nil {
+		snapshot.TaskGraph = m.resolveTaskGraph(ctx, states)
+	}
+
+	return snapshot
+}
+
+// resolveTaskGraph fetches tasks and deps, checks branch merge status, and resolves the DAG.
+func (m *Manager) resolveTaskGraph(ctx context.Context, worktreeStates []tuimsg.WorktreeState) tuimsg.TaskGraphSnapshot {
+	tasks, err := m.taskStore.List(ctx)
+	if err != nil {
+		slog.Warn("poll: task list", "err", err)
+		return tuimsg.TaskGraphSnapshot{}
+	}
+	deps, err := m.depStore.ListAll(ctx)
+	if err != nil {
+		slog.Warn("poll: dep list", "err", err)
+		return tuimsg.TaskGraphSnapshot{}
+	}
+	if len(tasks) == 0 {
+		return tuimsg.TaskGraphSnapshot{}
+	}
+
+	// Build repo path lookup from worktree states for branch merge checks.
+	// Use the first worktree's repo path for each repo name.
+	repoPathByID := make(map[string]string)
+	for _, ws := range worktreeStates {
+		if ws.RepoPath != "" {
+			repoPathByID[ws.RepoPath] = ws.RepoPath
+		}
+	}
+
+	// Build branchMerged map: only check tasks that are queued/running with a branch.
+	branchMerged := make(map[string]bool)
+	checked := make(map[string]bool) // avoid redundant subprocess calls
+	for _, t := range tasks {
+		if t.Branch == "" || t.State == "completed" {
+			continue
+		}
+		if checked[t.Branch] {
+			continue
+		}
+		checked[t.Branch] = true
+
+		// Find a repo path for this task. Try worktree states for a matching repo.
+		var repoPath string
+		for _, ws := range worktreeStates {
+			if ws.RepoPath != "" {
+				repoPath = ws.RepoPath
+				break
+			}
+		}
+		if repoPath == "" {
+			continue
+		}
+
+		defaultBranch := git.DefaultBranch(ctx, repoPath)
+		merged, err := git.IsBranchMerged(ctx, repoPath, t.Branch, defaultBranch)
+		if err != nil {
+			slog.Warn("poll: branch merge check", "branch", t.Branch, "err", err)
+			continue
+		}
+		branchMerged[t.ID] = merged
+	}
+
+	resolved, err := task.Resolve(tasks, deps, branchMerged)
+	hasCycle := err != nil
+	return tuimsg.TaskGraphSnapshot{
+		Tasks:    mapResolvedTasks(resolved),
+		HasCycle: hasCycle,
+	}
+}
+
+// mapResolvedTasks converts internal task.ResolvedTask to tuimsg.ResolvedTask.
+// BlockedBy IDs are truncated to 8 characters for display.
+func mapResolvedTasks(resolved []task.ResolvedTask) []tuimsg.ResolvedTask {
+	result := make([]tuimsg.ResolvedTask, len(resolved))
+	for i, rt := range resolved {
+		blockedBy := make([]string, len(rt.BlockedBy))
+		for j, id := range rt.BlockedBy {
+			if len(id) > 8 {
+				id = id[:8]
+			}
+			blockedBy[j] = id
+		}
+		result[i] = tuimsg.ResolvedTask{
+			ID:          rt.Task.ID,
+			Description: rt.Task.Description,
+			State:       rt.Task.State,
+			Branch:      rt.Task.Branch,
+			IsReady:     rt.IsReady,
+			IsBlocked:   rt.IsBlocked,
+			BlockedBy:   blockedBy,
+			Layer:       rt.Layer,
+		}
+	}
+	return result
 }
 
 // mapGitState converts git.WorktreeState to tuimsg.WorktreeState.

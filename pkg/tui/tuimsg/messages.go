@@ -44,11 +44,30 @@ type WorktreeState struct {
 	Sessions     []ClaudeSession // Claude Code sessions for this worktree's repo
 }
 
+// ResolvedTask is the TUI-side representation of a resolved task.
+type ResolvedTask struct {
+	ID          string
+	Description string
+	State       string   // queued, running, completed (DB state)
+	Branch      string
+	IsReady     bool
+	IsBlocked   bool
+	BlockedBy   []string // short IDs of blocking tasks
+	Layer       int
+}
+
+// TaskGraphSnapshot holds the resolved task graph for TUI rendering.
+type TaskGraphSnapshot struct {
+	Tasks    []ResolvedTask
+	HasCycle bool
+}
+
 // StateSnapshot is the point-in-time snapshot of all tracked state delivered to the TUI.
 // Worktrees contains one entry per DB-tracked worktree, populated by Manager.pollLoop.
 type StateSnapshot struct {
 	UpdatedAt time.Time
 	Worktrees []WorktreeState
+	TaskGraph TaskGraphSnapshot
 }
 
 // StateEvent is the tea.Msg delivered to RootModel.Update() when the
