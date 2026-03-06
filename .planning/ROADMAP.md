@@ -116,10 +116,15 @@ Plans:
   3. When a branch has no commits or session activity for the configured threshold (default 20 min), the system triggers configured agent analysis workflows automatically
   4. Agent-generated improvements appear as draft patches in the dashboard; user can approve, reject, edit, or apply each patch via `devctl agent review` and `devctl agent apply`
   5. User can revert any applied agent patch with `devctl agent revert` and user can enable or disable individual agent action types via configuration
-**Plans**: TBD
+**Plans**: 6 plans
 
 Plans:
-- [ ] 06-01: TBD
+- [ ] 06-01-PLAN.md — Migration 005 + AgentRunStore, PatchStore, and agent config via viper
+- [ ] 06-02-PLAN.md — Enhanced scanner with tool activity extraction + TUI session row enrichment
+- [ ] 06-03-PLAN.md — JSONL tail watcher + live session viewer panel with 'l' key wiring
+- [ ] 06-04-PLAN.md — Idle branch detection + agent workflow runner with Manager integration
+- [ ] 06-05-PLAN.md — Git patch operations + devctl agent review/apply/revert/config CLI
+- [ ] 06-06-PLAN.md — Patch panel in TUI + full phase verification checkpoint
 
 ## Progress
 
@@ -133,4 +138,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 3. Dashboard TUI | 0/2 | Not started | - |
 | 4. Session Management | 0/2 | Not started | - |
 | 5. Tasks and Dependencies | 4/4 | Complete | 2026-03-06 |
-| 6. AI Observability | 0/TBD | Not started | - |
+| 6. AI Observability | 0/6 | Not started | - |
