@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-03-05)
 
 **Core value:** A developer can open `devctl dashboard` and immediately see everything happening across all their repos and worktrees — no lost sessions, no forgotten branches, no missed follow-ups.
-**Current focus:** Phase 3 - Dashboard TUI
+**Current focus:** Phase 5 - Tasks and Dependencies
 
 ## Current Position
 
-Phase: 3 of 6 (Dashboard TUI) — IN PROGRESS
-Plan: 1 of 2 in current phase — COMPLETE
-Status: Plan 03-01 complete; worktree status indicators and OpenDiff entry point added
-Last activity: 2026-03-06 — Plan 03-01 complete; status indicators in left panel; OpenDiff on ViewerModel
+Phase: 5 of 6 (Tasks and Dependencies) — IN PROGRESS
+Plan: 1 of 4 in current phase — COMPLETE
+Status: Plan 05-01 complete; migration 004, TaskStore, and DepStore data layer
+Last activity: 2026-03-06 — Plan 05-01 complete; tasks/task_deps tables, CRUD stores
 
-Progress: [████████░░] 45%
+Progress: [████████░░] 50%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 10
+- Total plans completed: 11
 - Average duration: 4 min
-- Total execution time: 0.29 hours
+- Total execution time: 0.34 hours
 
 **By Phase:**
 
@@ -39,6 +39,7 @@ Progress: [████████░░] 45%
 | Phase 02-git-integration P05 | 5 min | 2 tasks | 3 files |
 | Phase 02-git-integration P06 | 2 | 2 tasks | 5 files |
 | Phase 03-dashboard-tui P01 | 1 min | 2 tasks | 2 files |
+| Phase 05-tasks-and-dependencies P01 | 3 min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -80,6 +81,9 @@ Recent decisions affecting current work:
 - [Phase 02-git-integration]: chroma quick.Highlight with terminal256/monokai: graceful degradation to plain text on highlight error
 - [03-01] Status derived purely from existing WorktreeState fields (Sessions, ChangedFiles) -- no new tuimsg types needed
 - [03-01] Styled indicator rendered inline rather than plain-text-then-recolor to keep ANSI handling simple
+- [05-01] Migration 004 (not 003): 003 reserved for Phase 04 session management
+- [05-01] Task state stores only queued/running/completed; blocked is computed by dependency resolver
+- [05-01] TaskStore.Get supports UUID prefix match for ergonomic CLI short IDs
 
 ### Pending Todos
 
@@ -93,5 +97,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-06
-Stopped at: Completed 03-01-PLAN.md
+Stopped at: Completed 05-01-PLAN.md
 Resume file: None
