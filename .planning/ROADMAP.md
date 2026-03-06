@@ -101,10 +101,10 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 05-01-PLAN.md — Migration 004 (tasks + task_deps tables) + TaskStore and DepStore data layer
-- [ ] 05-02-PLAN.md — devctl tasks create/list/update/delete + devctl deps add/remove/list CLI with cycle detection
-- [ ] 05-03-PLAN.md — DAG resolver (Kahn's algorithm, ready/blocked computation) with TDD + git branch ancestry check
-- [ ] 05-04-PLAN.md — Dashboard integration: task polling in Manager, TaskGraphPanel rendering, t-key wiring
+- [x] 05-01-PLAN.md — Migration 004 (tasks + task_deps tables) + TaskStore and DepStore data layer
+- [x] 05-02-PLAN.md — devctl tasks create/list/update/delete + devctl deps add/remove/list CLI with cycle detection
+- [x] 05-03-PLAN.md — DAG resolver (Kahn's algorithm, ready/blocked computation) with TDD + git branch ancestry check
+- [x] 05-04-PLAN.md — Dashboard integration: task polling in Manager, TaskGraphPanel rendering, t-key wiring
 
 ### Phase 6: AI Observability
 **Goal**: Users can see live Claude Code session activity in the dashboard, receive idle-triggered draft patches, and approve or revert agent-generated changes
@@ -132,5 +132,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. Git Integration | 0/7 | Not started | - |
 | 3. Dashboard TUI | 0/2 | Not started | - |
 | 4. Session Management | 0/2 | Not started | - |
-| 5. Tasks and Dependencies | 0/4 | Not started | - |
+| 5. Tasks and Dependencies | 4/4 | Complete | 2026-03-06 |
 | 6. AI Observability | 0/TBD | Not started | - |
