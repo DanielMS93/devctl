@@ -68,10 +68,11 @@ Plans:
   2. Each worktree entry shows a clear visual status (running, idle, finished, interrupted, blocked)
   3. User can navigate entirely with keyboard: arrow keys move between repos/worktrees, enter expands, `d` opens diff, `f` opens file, `r` triggers session restore, `t` opens task view
   4. Dashboard resizes correctly when the terminal window is resized
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 03-01: TBD
+- [ ] 03-01-PLAN.md — Worktree status indicators (running/idle/blocked) in left panel + OpenDiff method on ViewerModel
+- [ ] 03-02-PLAN.md — Direct keyboard shortcuts (d/f/r/t) from right panel + help hint updates in log bar and right panel
 
 ### Phase 4: Session Management
 **Goal**: Users can track, list, and jump between work sessions, and the dashboard reflects live session state
@@ -125,7 +126,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 |-------|----------------|--------|-----------|
 | 1. Foundation | 0/TBD | Not started | - |
 | 2. Git Integration | 0/7 | Not started | - |
-| 3. Dashboard TUI | 0/TBD | Not started | - |
+| 3. Dashboard TUI | 0/2 | Not started | - |
 | 4. Session Management | 0/TBD | Not started | - |
 | 5. Tasks and Dependencies | 0/TBD | Not started | - |
 | 6. AI Observability | 0/TBD | Not started | - |
