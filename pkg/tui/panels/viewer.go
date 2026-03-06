@@ -159,6 +159,18 @@ func (v *ViewerModel) Open(worktreePath, filePath string) tea.Cmd {
 	return v.loadFileContent()
 }
 
+// OpenDiff shows the viewer directly in diff mode for a specific file.
+// Bypasses file preview and loads diff content immediately with diffMode=0 (unstaged).
+func (v *ViewerModel) OpenDiff(worktreePath, filePath string) tea.Cmd {
+	v.Visible = true
+	v.worktreePath = worktreePath
+	v.filePath = filePath
+	v.diffMode = 0
+	v.showingDiff = true
+	v.vp = viewport.New(viewport.WithWidth(v.width-4), viewport.WithHeight(v.height-6))
+	return v.loadDiffContent()
+}
+
 // Close hides the viewer.
 func (v *ViewerModel) Close() {
 	v.Visible = false
