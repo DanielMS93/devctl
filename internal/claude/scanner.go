@@ -12,9 +12,9 @@ import (
 )
 
 // ActiveThreshold is the duration after which a session is considered no longer running.
-// Claude Code writes to JSONL multiple times per second while active, so 60s of silence
-// means the session has stopped.
-const ActiveThreshold = 60 * time.Second
+// Claude Code writes to JSONL multiple times per second while active (progress entries,
+// tool calls, results). 10s of silence means the session has stopped.
+const ActiveThreshold = 10 * time.Second
 
 // ToolActivity represents one tool invocation extracted from a JSONL assistant entry.
 type ToolActivity struct {
@@ -151,15 +151,19 @@ func ScanSessionsWithThreshold(repoPath string, threshold time.Duration) ([]Sess
 		if lastMsg == "" && slug == "" && len(recentFiles) == 0 {
 			continue
 		}
-		lastActivity := info.ModTime()
+		// Use entry timestamp for display, file mtime as fallback.
+		lastActivity := extras.lastEntryTime
+		if lastActivity.IsZero() {
+			lastActivity = info.ModTime()
+		}
 
 		sessions = append(sessions, Session{
 			ID:                   id,
 			ProjectPath:          repoPath,
 			Slug:                 slug,
 			LastActivity:         lastActivity,
-			IsActive:             IsActive2(lastActivity, threshold),
-			WaitingForPermission: extras.waitingForPermission,
+			IsActive:             extras.state == SessionRunning,
+			WaitingForPermission: extras.state == SessionWaiting,
 			LastMessage:          lastMsg,
 			RecentFiles:          recentFiles,
 			CurrentTool:          extras.currentTool,
@@ -199,12 +203,23 @@ func IsActive2(lastActivity time.Time, threshold time.Duration) bool {
 	return time.Since(lastActivity) < threshold
 }
 
+// SessionState describes what a session is doing based on JSONL content.
+type SessionState int
+
+const (
+	SessionIdle     SessionState = iota // no recent activity
+	SessionRunning                      // tool executing or Claude thinking
+	SessionWaiting                      // blocked on permission (tool_use with no progress)
+	SessionDone                         // Claude finished responding (last entry is text)
+)
+
 // sessionExtras holds the additional fields extracted from JSONL beyond message/slug/files.
 type sessionExtras struct {
-	waitingForPermission bool
-	currentTool          string
-	currentCommand string
-	recentTools    []ToolActivity
+	state           SessionState
+	lastEntryTime   time.Time // timestamp of last user/assistant entry (not metadata)
+	currentTool     string
+	currentCommand  string
+	recentTools     []ToolActivity
 }
 
 // extractRecentTools scans JSONL lines from the end backwards and extracts
@@ -337,11 +352,16 @@ func determineCurrentTool(lines []string) (currentTool, currentCommand string) {
 	return "", ""
 }
 
-// detectWaitingForPermission checks if the session is blocked waiting for user
-// approval. This is the case when the last assistant entry has a tool_use and
-// there's no subsequent tool_result or user entry — the tool call is pending.
-func detectWaitingForPermission(lines []string) bool {
-	// Scan backwards to find the last meaningful entry type.
+// detectSessionState determines the session state from JSONL content.
+// It examines the last real entry (skipping metadata), its timestamp, and recent progress.
+func detectSessionState(lines []string) SessionState {
+	var lastRealType string // "user", "assistant", "system"
+	var lastRealRole string
+	var lastRealTime time.Time
+	var hasToolUse bool
+	var hasTextOnly bool
+	var lastProgressTime time.Time
+
 	for i := len(lines) - 1; i >= 0; i-- {
 		var obj map[string]any
 		if json.Unmarshal([]byte(lines[i]), &obj) != nil {
@@ -349,34 +369,69 @@ func detectWaitingForPermission(lines []string) bool {
 		}
 		entryType, _ := obj["type"].(string)
 
-		// If the last real entry is a user message or tool_result, not waiting.
-		if entryType == "user" {
-			return false
-		}
-
-		// Skip progress/system entries — they don't indicate tool completion.
-		if entryType == "progress" || entryType == "system" || entryType == "file-history-snapshot" {
+		// Track most recent progress timestamp.
+		if entryType == "progress" && lastProgressTime.IsZero() {
+			if tsStr, ok := obj["timestamp"].(string); ok {
+				lastProgressTime, _ = time.Parse(time.RFC3339Nano, tsStr)
+			}
 			continue
 		}
 
-		// Check if this is an assistant entry with tool_use.
-		msg, _ := obj["message"].(map[string]any)
-		role, _ := msg["role"].(string)
-		if role == "assistant" {
-			content, _ := msg["content"].([]any)
-			for _, c := range content {
-				cm, _ := c.(map[string]any)
-				if cm["type"] == "tool_use" {
-					return true // tool_use with no subsequent result = waiting
-				}
-			}
-			return false // assistant entry but no tool_use
+		// Skip other metadata.
+		if entryType == "file-history-snapshot" || entryType == "last-prompt" || entryType == "queue-operation" {
+			continue
 		}
 
-		// Any other entry type — not waiting.
-		return false
+		// This is the last real entry.
+		if lastRealType == "" {
+			lastRealType = entryType
+			if tsStr, ok := obj["timestamp"].(string); ok {
+				lastRealTime, _ = time.Parse(time.RFC3339Nano, tsStr)
+			}
+			msg, _ := obj["message"].(map[string]any)
+			lastRealRole, _ = msg["role"].(string)
+			if lastRealRole == "assistant" {
+				content, _ := msg["content"].([]any)
+				for _, c := range content {
+					cm, _ := c.(map[string]any)
+					ct, _ := cm["type"].(string)
+					if ct == "tool_use" {
+						hasToolUse = true
+					}
+					if ct == "text" {
+						hasTextOnly = true
+					}
+				}
+				if hasToolUse {
+					hasTextOnly = false // tool_use takes priority
+				}
+			}
+			break
+		}
 	}
-	return false
+
+	recentEntry := !lastRealTime.IsZero() && time.Since(lastRealTime) < ActiveThreshold
+	recentProgress := !lastProgressTime.IsZero() && time.Since(lastProgressTime) < ActiveThreshold
+	recentActivity := recentEntry || recentProgress
+
+	switch {
+	case lastRealType == "system":
+		return SessionDone // session ended
+	case lastRealRole == "assistant" && hasTextOnly && !recentActivity:
+		return SessionDone // Claude finished talking
+	case lastRealRole == "assistant" && hasTextOnly && recentActivity:
+		return SessionRunning // Claude just wrote text, still generating
+	case lastRealRole == "assistant" && hasToolUse && recentActivity:
+		return SessionRunning // tool executing or just dispatched
+	case lastRealRole == "assistant" && hasToolUse && !recentActivity:
+		return SessionWaiting // tool_use but stale = waiting for permission
+	case lastRealType == "user" && recentActivity:
+		return SessionRunning // Claude is thinking
+	case lastRealType == "user" && !recentActivity:
+		return SessionDone
+	default:
+		return SessionIdle
+	}
 }
 
 // parseJSONL reads a session JSONL file and extracts the last user message text,
@@ -425,6 +480,22 @@ func parseJSONL(path string) (lastMessage, slug string, recentFiles []string, ex
 	if json.Unmarshal([]byte(lines[len(lines)-1]), &lastObj) == nil {
 		if s, ok := lastObj["slug"].(string); ok {
 			slug = s
+		}
+	}
+
+	// Find timestamp of last user/assistant entry for display (age, "finished at").
+	var lastEntryTime time.Time
+	for i := len(lines) - 1; i >= 0; i-- {
+		var obj map[string]any
+		if json.Unmarshal([]byte(lines[i]), &obj) != nil {
+			continue
+		}
+		entryType, _ := obj["type"].(string)
+		if entryType == "user" || entryType == "assistant" {
+			if tsStr, ok := obj["timestamp"].(string); ok {
+				lastEntryTime, _ = time.Parse(time.RFC3339Nano, tsStr)
+			}
+			break
 		}
 	}
 
@@ -537,12 +608,13 @@ func parseJSONL(path string) (lastMessage, slug string, recentFiles []string, ex
 	// Extract tool activity.
 	recentTools := extractRecentTools(lines, 5)
 	currentTool, currentCommand := determineCurrentTool(lines)
-	waiting := detectWaitingForPermission(lines)
+	state := detectSessionState(lines)
 	extras = sessionExtras{
-		waitingForPermission: waiting,
-		currentTool:          currentTool,
-		currentCommand:       currentCommand,
-		recentTools:          recentTools,
+		state:          state,
+		lastEntryTime:  lastEntryTime,
+		currentTool:    currentTool,
+		currentCommand: currentCommand,
+		recentTools:    recentTools,
 	}
 
 	return lastMessage, slug, recentFiles, extras
