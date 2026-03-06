@@ -18,7 +18,7 @@ func (b *LogBar) SetWidth(width int) { b.width = width }
 func (b *LogBar) SetStatus(msg string) { b.status = msg }
 
 func (b LogBar) View() string {
-	text := " q=quit  tab=panels  ↑↓=navigate  d=diff  f=file  r=resume  l=live  n=new session  t=tasks"
+	text := " q=quit  tab=panels  ↑↓=navigate  d=diff  f=file  r=resume  l=live  n=new session  t=tasks  p=patches"
 	if b.status != "" {
 		text = "  " + b.status
 	}

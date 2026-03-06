@@ -38,6 +38,14 @@ func LaunchClaudeSession(sessionID, projectPath string) tea.Cmd {
 	}
 }
 
+// LaunchNewClaudeSession opens a fresh `claude` session in a new terminal window.
+func LaunchNewClaudeSession(projectPath string) tea.Cmd {
+	return func() tea.Msg {
+		err := openNewClaudeInWindow(projectPath)
+		return ClaudeLaunchedMsg{SessionID: "new", Err: err}
+	}
+}
+
 // openClaudeInNewWindow launches claude --resume in a docked pane (iTerm2 vertical split)
 // or a new tab (Terminal.app). Uses a login shell so PATH includes ~/go/bin etc.
 // Appends `; exec $SHELL` so the pane stays open after Claude exits.
@@ -50,6 +58,20 @@ func openClaudeInNewWindow(sessionID, projectPath string) error {
 	// zsh -l -c wrapper needed. Using the full claudePath avoids any PATH issues.
 	// Trailing `; exec $SHELL` keeps the pane open after Claude exits.
 	shellCmd := fmt.Sprintf("cd '%s' && %s --resume %s; exec $SHELL", safePath, claudePath, sessionID)
+
+	switch os.Getenv("TERM_PROGRAM") {
+	case "iTerm.app":
+		return runAppleScript(iterm2SplitScript(shellCmd))
+	default:
+		return runAppleScript(terminalAppTabScript(shellCmd))
+	}
+}
+
+// openNewClaudeInWindow launches a fresh claude session (no --resume) in the project dir.
+func openNewClaudeInWindow(projectPath string) error {
+	claudePath := findClaudeBin()
+	safePath := strings.ReplaceAll(projectPath, `'`, `'"'"'`)
+	shellCmd := fmt.Sprintf("cd '%s' && %s; exec $SHELL", safePath, claudePath)
 
 	switch os.Getenv("TERM_PROGRAM") {
 	case "iTerm.app":

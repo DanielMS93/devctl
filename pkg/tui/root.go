@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"context"
+	"fmt"
 	"log/slog"
 	"path/filepath"
 
@@ -29,6 +31,8 @@ type RootModel struct {
 	rightPanel    panels.DetailPanel
 	taskGraph     panels.TaskGraphPanel
 	showTaskGraph bool
+	patchPanel    panels.PatchPanel
+	showPatches   bool
 	viewer        panels.ViewerModel
 	sessionViewer panels.SessionViewer
 	logBar        panels.LogBar
@@ -37,11 +41,13 @@ type RootModel struct {
 }
 
 // NewRootModel creates a RootModel subscribed to the given event channel.
-func NewRootModel(events <-chan StateEvent) RootModel {
+// patchUpdater may be nil if agent features are disabled.
+func NewRootModel(events <-chan StateEvent, patchUpdater panels.PatchStatusUpdater) RootModel {
 	return RootModel{
 		leftPanel:     panels.NewRepoPanel(),
 		rightPanel:    panels.NewDetailPanel(),
 		taskGraph:     panels.NewTaskGraphPanel(),
+		patchPanel:    panels.NewPatchPanel(patchUpdater),
 		viewer:        panels.NewViewerModel(),
 		sessionViewer: panels.NewSessionViewer(),
 		logBar:        panels.NewLogBar(),
@@ -91,7 +97,9 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.leftPanel.MoveUp()
 				m.rightPanel.SetWorktree(m.leftPanel.SelectedWorktree())
 			} else if m.activePanel == PanelRight {
-				if m.showTaskGraph {
+				if m.showPatches {
+					m.patchPanel.MoveUp()
+				} else if m.showTaskGraph {
 					m.taskGraph.ScrollUp()
 				} else {
 					m.rightPanel.MoveUp()
@@ -102,18 +110,29 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.leftPanel.MoveDown()
 				m.rightPanel.SetWorktree(m.leftPanel.SelectedWorktree())
 			} else if m.activePanel == PanelRight {
-				if m.showTaskGraph {
+				if m.showPatches {
+					m.patchPanel.MoveDown()
+				} else if m.showTaskGraph {
 					m.taskGraph.ScrollDown()
 				} else {
 					m.rightPanel.MoveDown()
 				}
 			}
 		case "esc":
-			if m.showTaskGraph {
+			if m.showPatches {
+				if !m.patchPanel.CloseDiff() {
+					m.showPatches = false
+					m.logBar.SetStatus("")
+				}
+			} else if m.showTaskGraph {
 				m.showTaskGraph = false
 				m.logBar.SetStatus("")
 			}
 		case "enter":
+			if m.showPatches {
+				m.patchPanel.ToggleDiff()
+				return m, nil
+			}
 			if m.activePanel == PanelLeft {
 				// Dive into the right panel for the selected repo.
 				m.activePanel = PanelRight
@@ -151,8 +170,28 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "a":
-			if m.activePanel == PanelRight && !m.showTaskGraph {
+			if m.showPatches {
+				ctx := context.Background()
+				if cmd := m.patchPanel.ApprovePatch(ctx); cmd != nil {
+					return m, cmd
+				}
+			} else if m.activePanel == PanelRight && !m.showTaskGraph {
 				m.rightPanel.ToggleAllSessions()
+			}
+		case "x":
+			if m.showPatches {
+				ctx := context.Background()
+				if cmd := m.patchPanel.RejectPatch(ctx); cmd != nil {
+					return m, cmd
+				}
+			}
+		case "p":
+			m.showPatches = !m.showPatches
+			if m.showPatches {
+				m.showTaskGraph = false
+				m.logBar.SetStatus("Patch review (p to close)")
+			} else {
+				m.logBar.SetStatus("")
 			}
 		case "n":
 			if wt := m.leftPanel.SelectedWorktree(); wt != nil {
@@ -186,8 +225,16 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.leftPanel.SetState(msg)
 		m.rightPanel.SetWorktree(m.leftPanel.SelectedWorktree())
 		m.taskGraph.SetGraph(msg.Snapshot.TaskGraph)
+		m.patchPanel.SetPatches(msg.Snapshot.Patches)
 		// Re-arm: exactly one goroutine blocks on the channel at a time.
 		cmds = append(cmds, m.subscribeToStateEvents())
+
+	case panels.PatchStatusMsg:
+		if msg.Err != nil {
+			m.logBar.SetStatus(fmt.Sprintf("Patch error: %v", msg.Err))
+		} else {
+			m.logBar.SetStatus(fmt.Sprintf("Patch %q %s", msg.Title, msg.Status))
+		}
 
 	case panels.EditorFinishedMsg:
 		if msg.Err != nil {
@@ -221,6 +268,8 @@ func (m RootModel) View() tea.View {
 		right = m.sessionViewer.View()
 	} else if m.viewer.Visible {
 		right = m.viewer.View()
+	} else if m.showPatches {
+		right = m.patchPanel.View()
 	} else if m.showTaskGraph {
 		right = m.taskGraph.View()
 	} else {
@@ -262,6 +311,8 @@ func (m *RootModel) propagateSizes() {
 	m.rightPanel.SetFocused(m.activePanel == PanelRight && !m.showTaskGraph)
 	m.taskGraph.SetSize(rightWidth, bodyHeight)
 	m.taskGraph.SetFocused(m.activePanel == PanelRight && m.showTaskGraph)
+	m.patchPanel.SetSize(rightWidth, bodyHeight)
+	m.patchPanel.SetFocused(m.activePanel == PanelRight && m.showPatches)
 	m.viewer.SetSize(rightWidth, bodyHeight)
 	m.sessionViewer.SetSize(rightWidth, bodyHeight)
 	m.logBar.SetWidth(m.width)

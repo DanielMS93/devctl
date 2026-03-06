@@ -96,7 +96,13 @@ repos and worktrees — no lost sessions, no forgotten branches, no missed follo
 
 // runDashboard opens the TUI dashboard. Used by both the bare `devctl` command and `devctl dashboard`.
 func runDashboard(mgr *dashboard.Manager) error {
-	m := tui.NewRootModel(mgr.Events())
+	// Pass PatchStore as PatchStatusUpdater if agent features are enabled.
+	// Explicit nil check avoids a non-nil interface wrapping a nil pointer.
+	var patchUpdater tui.PatchStatusUpdater
+	if ps := mgr.PatchStore(); ps != nil {
+		patchUpdater = ps
+	}
+	m := tui.NewRootModel(mgr.Events(), patchUpdater)
 	// v2: AltScreen is set declaratively in View(); do NOT use tea.WithAltScreen().
 	// v2: Use p.Run(), not p.Start() (removed in v2).
 	p := tea.NewProgram(m)

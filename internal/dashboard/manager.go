@@ -70,6 +70,11 @@ func (m *Manager) Events() <-chan tui.StateEvent {
 	return m.events
 }
 
+// PatchStore returns the patch store if agent features are enabled, or nil.
+func (m *Manager) PatchStore() *agent.PatchStore {
+	return m.patchStore
+}
+
 // pollLoop emits StateEvents every 5 seconds.
 // On startup it emits the DB cache immediately (instant render), then fires a real poll
 // right away so Claude-discovered sessions appear without waiting the full 5s.
