@@ -2,9 +2,11 @@ package tui
 
 import (
 	"log/slog"
+	"path/filepath"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/danielmiessler/devctl/internal/claude"
 	"github.com/danielmiessler/devctl/pkg/tui/panels"
 )
 
@@ -28,6 +30,7 @@ type RootModel struct {
 	taskGraph     panels.TaskGraphPanel
 	showTaskGraph bool
 	viewer        panels.ViewerModel
+	sessionViewer panels.SessionViewer
 	logBar        panels.LogBar
 
 	stateChan <-chan StateEvent
@@ -36,12 +39,13 @@ type RootModel struct {
 // NewRootModel creates a RootModel subscribed to the given event channel.
 func NewRootModel(events <-chan StateEvent) RootModel {
 	return RootModel{
-		leftPanel:  panels.NewRepoPanel(),
-		rightPanel: panels.NewDetailPanel(),
-		taskGraph:  panels.NewTaskGraphPanel(),
-		viewer:     panels.NewViewerModel(),
-		logBar:     panels.NewLogBar(),
-		stateChan:  events,
+		leftPanel:     panels.NewRepoPanel(),
+		rightPanel:    panels.NewDetailPanel(),
+		taskGraph:     panels.NewTaskGraphPanel(),
+		viewer:        panels.NewViewerModel(),
+		sessionViewer: panels.NewSessionViewer(),
+		logBar:        panels.NewLogBar(),
+		stateChan:     events,
 	}
 }
 
@@ -57,6 +61,14 @@ func (m RootModel) Init() tea.Cmd {
 //   - Re-arm the subscription on every StateEvent.
 func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
+
+	// Always let session viewer process messages when visible (handles its own key routing).
+	if m.sessionViewer.Visible {
+		consumed, cmd := m.sessionViewer.Update(msg)
+		if consumed {
+			return m, cmd
+		}
+	}
 
 	// Always let viewer process messages when visible (handles its own key routing).
 	if m.viewer.Visible {
@@ -153,6 +165,16 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.logBar.SetStatus("")
 			}
+		case "l":
+			if m.activePanel == PanelRight {
+				if s := m.rightPanel.SelectedSession(); s != nil {
+					projectDir := claude.ClaudeProjectDir(s.ProjectPath)
+					jsonlPath := filepath.Join(projectDir, s.ID+".jsonl")
+					cmd := m.sessionViewer.Open(s.ID, s.Slug, jsonlPath)
+					m.logBar.SetStatus("Live session viewer (Esc to close)")
+					return m, cmd
+				}
+			}
 		}
 
 	case tea.WindowSizeMsg:
@@ -195,7 +217,9 @@ func (m RootModel) View() tea.View {
 	left := m.leftPanel.View()
 
 	var right string
-	if m.viewer.Visible {
+	if m.sessionViewer.Visible {
+		right = m.sessionViewer.View()
+	} else if m.viewer.Visible {
 		right = m.viewer.View()
 	} else if m.showTaskGraph {
 		right = m.taskGraph.View()
@@ -239,5 +263,6 @@ func (m *RootModel) propagateSizes() {
 	m.taskGraph.SetSize(rightWidth, bodyHeight)
 	m.taskGraph.SetFocused(m.activePanel == PanelRight && m.showTaskGraph)
 	m.viewer.SetSize(rightWidth, bodyHeight)
+	m.sessionViewer.SetSize(rightWidth, bodyHeight)
 	m.logBar.SetWidth(m.width)
 }
