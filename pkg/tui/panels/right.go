@@ -12,16 +12,20 @@ import (
 // DetailPanel shows Claude sessions and changed files for the selected worktree.
 // Sessions are always shown first (no mode toggle). Arrow keys navigate a unified
 // list: sessions first, then files. Enter on a session shows the resume command.
+// By default only active sessions are shown; pressing 'a' toggles showing all.
 type DetailPanel struct {
 	width    int
 	height   int
 	focused  bool
 	worktree *tuimsg.WorktreeState
 
-	// cursor is a unified index over (sessions + files).
-	// 0..numSessions-1  → session items
-	// numSessions..end  → file items
+	// cursor is a unified index over (visible sessions + files).
+	// 0..numVisibleSessions-1  → session items
+	// numVisibleSessions..end  → file items
 	cursor int
+
+	// showAllSessions toggles between showing only active sessions vs all.
+	showAllSessions bool
 }
 
 func NewDetailPanel() DetailPanel { return DetailPanel{} }
@@ -33,17 +37,39 @@ func (p *DetailPanel) SetSize(width, height int) {
 
 func (p *DetailPanel) SetFocused(focused bool) { p.focused = focused }
 
-// SetWorktree updates the displayed worktree and resets navigation.
+// SetWorktree updates the displayed worktree. Resets cursor only when
+// switching to a different worktree, so poll refreshes don't disrupt navigation.
 func (p *DetailPanel) SetWorktree(wt *tuimsg.WorktreeState) {
+	if wt == nil || p.worktree == nil || wt.WorktreePath != p.worktree.WorktreePath {
+		p.cursor = 0
+	}
 	p.worktree = wt
-	p.cursor = 0
+	// Clamp cursor if items shrunk.
+	if total := p.totalItems(); p.cursor >= total && total > 0 {
+		p.cursor = total - 1
+	}
+}
+
+// visibleSessions returns the sessions that should be displayed based on the
+// showAllSessions toggle.
+func (p *DetailPanel) visibleSessions() []tuimsg.ClaudeSession {
+	if p.worktree == nil {
+		return nil
+	}
+	if p.showAllSessions {
+		return p.worktree.Sessions
+	}
+	var active []tuimsg.ClaudeSession
+	for _, s := range p.worktree.Sessions {
+		if s.IsActive {
+			active = append(active, s)
+		}
+	}
+	return active
 }
 
 func (p *DetailPanel) numSessions() int {
-	if p.worktree == nil {
-		return 0
-	}
-	return len(p.worktree.Sessions)
+	return len(p.visibleSessions())
 }
 
 func (p *DetailPanel) numFiles() int {
@@ -54,6 +80,17 @@ func (p *DetailPanel) numFiles() int {
 }
 
 func (p *DetailPanel) totalItems() int { return p.numSessions() + p.numFiles() }
+
+// ToggleAllSessions switches between showing only active sessions and all sessions.
+func (p *DetailPanel) ToggleAllSessions() {
+	p.showAllSessions = !p.showAllSessions
+	// Clamp cursor after toggling since visible item count changed.
+	if total := p.totalItems(); p.cursor >= total && total > 0 {
+		p.cursor = total - 1
+	} else if total == 0 {
+		p.cursor = 0
+	}
+}
 
 func (p *DetailPanel) MoveUp() {
 	if p.cursor > 0 {
@@ -69,10 +106,11 @@ func (p *DetailPanel) MoveDown() {
 
 // SelectedSession returns the session under the cursor, or nil.
 func (p *DetailPanel) SelectedSession() *tuimsg.ClaudeSession {
-	if p.worktree == nil || p.cursor >= p.numSessions() {
+	visible := p.visibleSessions()
+	if p.cursor >= len(visible) {
 		return nil
 	}
-	s := p.worktree.Sessions[p.cursor]
+	s := visible[p.cursor]
 	return &s
 }
 
@@ -134,16 +172,33 @@ func (p DetailPanel) viewMain(innerW int) string {
 	nf := p.numFiles()
 
 	// ── Sessions section ────────────────────────────────────────────────
-	if ns > 0 {
+	totalSessions := len(p.worktree.Sessions)
+	visible := p.visibleSessions()
+	if totalSessions > 0 {
 		active := countActiveSessions(*p.worktree)
-		rows = append(rows, bold.Render(fmt.Sprintf("Sessions  (%d active)", active)))
+		inactive := totalSessions - active
+
+		var label string
+		if p.showAllSessions {
+			label = fmt.Sprintf("Sessions  %d active", active)
+			if inactive > 0 {
+				label += fmt.Sprintf(", %d inactive", inactive)
+			}
+			label += "  (a=hide inactive)"
+		} else {
+			label = fmt.Sprintf("Sessions  %d active", active)
+			if inactive > 0 {
+				label += dim.Render(fmt.Sprintf("  +%d inactive (a=show)", inactive))
+			}
+		}
+		rows = append(rows, bold.Render(label))
 		rows = append(rows, dim.Render(strings.Repeat("─", innerW)))
 
-		for i, s := range p.worktree.Sessions {
+		for i, s := range visible {
 			selected := p.focused && p.cursor == i
 			rows = append(rows, renderSessionRow(s, selected, innerW))
-			rows = append(rows, "")
 		}
+		rows = append(rows, "") // one blank line before next section
 	}
 
 	// ── Changed Files section ────────────────────────────────────────────
@@ -177,81 +232,107 @@ func (p DetailPanel) viewMain(innerW int) string {
 	if ns > 0 {
 		hints = append(hints, "r=resume session")
 	}
+	if totalSessions > countActiveSessions(*p.worktree) {
+		if p.showAllSessions {
+			hints = append(hints, "a=hide inactive")
+		} else {
+			hints = append(hints, "a=show all")
+		}
+	}
 	if nf > 0 {
 		hints = append(hints, "d=diff  f=file  enter=open")
 	}
-	hints = append(hints, "tab=switch panel")
+	hints = append(hints, "n=new session  tab=switch panel")
 	rows = append(rows, dim.Render(strings.Join(hints, "   ")))
 
 	return strings.Join(rows, "\n")
 }
 
-// renderSessionRow renders one session entry. All layout strings are plain text;
-// the selection highlight is applied to the whole row at the end.
+// renderSessionRow renders one session entry as a compact 2-line block:
+//   Line 1: cursor + status dot + slug/id + right-aligned age
+//   Line 2: indented summary message (dim)
 func renderSessionRow(s tuimsg.ClaudeSession, selected bool, width int) string {
+	dim := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+
 	cursor := "  "
 	if selected {
 		cursor = "> "
 	}
 
-	status := "IDLE  "
+	// Status: colored dot + text marker.
+	var statusMarker string
+	var statusLen int // visible character count of the marker
 	if s.IsActive {
-		status = "ACTIVE"
+		statusMarker = lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Bold(true).Render("● RUN")
+		statusLen = 5 // "● RUN"
+	} else {
+		statusMarker = dim.Render("○ idle")
+		statusLen = 6 // "○ idle"
 	}
 
-	shortID := s.ID
-	if len(shortID) > 8 {
-		shortID = shortID[:8]
+	// Prefer slug over hex ID — more recognizable.
+	label := s.Slug
+	if label == "" {
+		label = s.ID
+		if len(label) > 8 {
+			label = label[:8]
+		}
 	}
+
 	age := formatAge(s.LastActivity)
 
-	// Line 1: cursor + status + short id + age
-	header := fmt.Sprintf("%s[%s] %s  %s", cursor, status, shortID, age)
+	// Line 1: cursor + marker + space + label ... age (right-aligned)
+	leftText := fmt.Sprintf("%s%s %s", cursor, statusMarker, label)
+	// statusMarker has ANSI; visible width is cursor(2) + marker + space(1) + label
+	visibleLeft := 2 + statusLen + 1 + len(label)
+	gap := width - visibleLeft - len(age)
+	if gap < 2 {
+		gap = 2
+	}
+	header := leftText + strings.Repeat(" ", gap) + age
 
-	// Line 2: last message (indented)
-	msg := s.LastMessage
-	maxMsg := width - 12
+	// Line 2: summary message (indented, dim, single line)
+	msg := cleanSummary(s.LastMessage)
+	maxMsg := width - 6
 	if maxMsg < 20 {
 		maxMsg = 20
 	}
 	if len(msg) > maxMsg {
 		msg = msg[:maxMsg-1] + "…"
 	}
-	msgLine := fmt.Sprintf("    %s", msg)
-
-	// Line 3: files (indented, if any)
-	var filesLine string
-	if len(s.RecentFiles) > 0 {
-		files := make([]string, len(s.RecentFiles))
-		for i, f := range s.RecentFiles {
-			parts := strings.Split(f, "/")
-			if len(parts) > 2 {
-				files[i] = strings.Join(parts[len(parts)-2:], "/")
-			} else {
-				files[i] = f
-			}
-		}
-		joined := strings.Join(files, ", ")
-		if len(joined) > width-14 {
-			joined = joined[:width-15] + "…"
-		}
-		filesLine = fmt.Sprintf("    files: %s", joined)
-	}
+	msgLine := dim.Render(fmt.Sprintf("    %s", msg))
 
 	if selected {
 		hl := lipgloss.NewStyle().Background(lipgloss.Color("17")).Bold(true).Width(width)
 		header = hl.Render(header)
-		msgLine = hl.Render(msgLine)
-		if filesLine != "" {
-			filesLine = hl.Render(filesLine)
-		}
+		msgLine = hl.Render(fmt.Sprintf("    %s", msg))
 	}
 
-	lines := []string{header, msgLine}
-	if filesLine != "" {
-		lines = append(lines, filesLine)
+	return header + "\n" + msgLine
+}
+
+// cleanSummary strips markdown formatting and other noise from session messages.
+func cleanSummary(msg string) string {
+	// Strip markdown bold/italic markers.
+	msg = strings.ReplaceAll(msg, "**", "")
+	msg = strings.ReplaceAll(msg, "__", "")
+	// Strip image references.
+	if strings.HasPrefix(msg, "[Image:") || strings.HasPrefix(msg, "[image:") {
+		return "(image attached)"
 	}
-	return strings.Join(lines, "\n")
+	// Strip leading XML-like tags that slipped through.
+	if strings.HasPrefix(msg, "<") {
+		if idx := strings.Index(msg, ">"); idx != -1 && idx < 30 {
+			rest := strings.TrimSpace(msg[idx+1:])
+			if ci := strings.Index(rest, "</"); ci != -1 {
+				rest = strings.TrimSpace(rest[:ci])
+			}
+			if rest != "" {
+				return rest
+			}
+		}
+	}
+	return msg
 }
 
 // formatAge returns a human-readable elapsed time string.

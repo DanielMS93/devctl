@@ -138,6 +138,10 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, panels.LaunchClaudeSession(s.ID, s.ProjectPath)
 				}
 			}
+		case "a":
+			if m.activePanel == PanelRight && !m.showTaskGraph {
+				m.rightPanel.ToggleAllSessions()
+			}
 		case "n":
 			if wt := m.leftPanel.SelectedWorktree(); wt != nil {
 				return m, panels.LaunchNewClaudeSession(wt.WorktreePath)
