@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-03-05)
 
 **Core value:** A developer can open `devctl dashboard` and immediately see everything happening across all their repos and worktrees — no lost sessions, no forgotten branches, no missed follow-ups.
-**Current focus:** Phase 5 - Tasks and Dependencies
+**Current focus:** Phase 6 - AI Observability
 
 ## Current Position
 
-Phase: 5 of 6 (Tasks and Dependencies) — COMPLETE
-Plan: 4 of 4 in current phase — COMPLETE
-Status: Phase 05 complete; task graph visualization in dashboard with DAG rendering and t-key toggle
-Last activity: 2026-03-06 — Plan 05-04 complete; TaskGraphPanel, Manager integration, t-key wiring
+Phase: 6 of 6 (AI Observability)
+Plan: 1 of 6 in current phase — COMPLETE
+Status: Agent data layer complete; migration 005, CRUD stores, viper config
+Last activity: 2026-03-06 — Plan 06-01 complete; agent_runs/agent_patches tables, AgentRunStore, PatchStore, AgentConfig
 
-Progress: [██████████] 60%
+Progress: [████████████] 70%
 
 ## Performance Metrics
 
@@ -43,6 +43,7 @@ Progress: [██████████] 60%
 | Phase 05-tasks-and-dependencies P03 | 2 min | 2 tasks | 3 files |
 | Phase 05-tasks-and-dependencies P02 | 2 min | 2 tasks | 3 files |
 | Phase 05-tasks-and-dependencies P04 | 3 min | 2 tasks | 4 files |
+| Phase 06-ai-observability P01 | 2 min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -94,6 +95,9 @@ Recent decisions affecting current work:
 - [05-02] Partial update via Get-then-Update: CLI fetches current task, merges flags, calls Update with full record
 - [05-02] Cycle detection in CLI layer (deps.go) not store: keeps DepStore as pure data layer
 - [05-01] TaskStore.Get supports UUID prefix match for ergonomic CLI short IDs
+- [06-01] Nullable DB columns (completed_at, error_msg, etc.) use Go pointer types for proper NULL roundtrip
+- [06-01] AgentRunStore.UpdateStatus auto-sets completed_at on completed/failed transitions
+- [06-01] Known workflows loaded explicitly from viper rather than dynamic mapstructure unmarshalling
 
 ### Pending Todos
 
@@ -106,5 +110,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-06
-Stopped at: Completed 05-04-PLAN.md (Phase 05 complete)
+Stopped at: Completed 06-01-PLAN.md
 Resume file: None
