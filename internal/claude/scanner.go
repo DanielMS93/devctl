@@ -11,8 +11,10 @@ import (
 	"time"
 )
 
-// ActiveThreshold is the default duration after which a session is considered idle.
-const ActiveThreshold = 20 * time.Minute
+// ActiveThreshold is the duration after which a session is considered no longer running.
+// Claude Code writes to JSONL multiple times per second while active, so 60s of silence
+// means the session has stopped.
+const ActiveThreshold = 60 * time.Second
 
 // ToolActivity represents one tool invocation extracted from a JSONL assistant entry.
 type ToolActivity struct {
@@ -23,16 +25,17 @@ type ToolActivity struct {
 
 // Session represents one Claude Code session for a project.
 type Session struct {
-	ID             string
-	ProjectPath    string    // absolute path of the repo
-	Slug           string    // human-readable session slug (e.g. "agile-crunching-canyon")
-	LastActivity   time.Time // file mtime
-	IsActive       bool      // modified within ActiveThreshold
-	LastMessage    string    // last user text message, or slug as fallback
-	RecentFiles    []string  // recently touched files (up to 10)
-	CurrentTool    string    // name of the most recent tool_use with no subsequent user entry
-	CurrentCommand string    // target of the current tool (file path or truncated command)
-	RecentTools    []ToolActivity // last 5 tool activities
+	ID                   string
+	ProjectPath          string    // absolute path of the repo
+	Slug                 string    // human-readable session slug (e.g. "agile-crunching-canyon")
+	LastActivity         time.Time // file mtime
+	IsActive             bool      // modified within ActiveThreshold
+	WaitingForPermission bool      // last entry is tool_use with no tool_result (blocked on user approval)
+	LastMessage          string    // last user text message, or slug as fallback
+	RecentFiles          []string  // recently touched files (up to 10)
+	CurrentTool          string    // name of the most recent tool_use with no subsequent user entry
+	CurrentCommand       string    // target of the current tool (file path or truncated command)
+	RecentTools          []ToolActivity // last 5 tool activities
 }
 
 // ClaudeProjectDir returns the ~/.claude/projects/ directory for the given repo path.
@@ -151,16 +154,17 @@ func ScanSessionsWithThreshold(repoPath string, threshold time.Duration) ([]Sess
 		lastActivity := info.ModTime()
 
 		sessions = append(sessions, Session{
-			ID:             id,
-			ProjectPath:    repoPath,
-			Slug:           slug,
-			LastActivity:   lastActivity,
-			IsActive:       IsActive2(lastActivity, threshold),
-			LastMessage:     lastMsg,
-			RecentFiles:    recentFiles,
-			CurrentTool:    extras.currentTool,
-			CurrentCommand: extras.currentCommand,
-			RecentTools:    extras.recentTools,
+			ID:                   id,
+			ProjectPath:          repoPath,
+			Slug:                 slug,
+			LastActivity:         lastActivity,
+			IsActive:             IsActive2(lastActivity, threshold),
+			WaitingForPermission: extras.waitingForPermission,
+			LastMessage:          lastMsg,
+			RecentFiles:          recentFiles,
+			CurrentTool:          extras.currentTool,
+			CurrentCommand:       extras.currentCommand,
+			RecentTools:          extras.recentTools,
 		})
 	}
 
@@ -197,7 +201,8 @@ func IsActive2(lastActivity time.Time, threshold time.Duration) bool {
 
 // sessionExtras holds the additional fields extracted from JSONL beyond message/slug/files.
 type sessionExtras struct {
-	currentTool    string
+	waitingForPermission bool
+	currentTool          string
 	currentCommand string
 	recentTools    []ToolActivity
 }
@@ -330,6 +335,48 @@ func determineCurrentTool(lines []string) (currentTool, currentCommand string) {
 		return toolName, toolTarget
 	}
 	return "", ""
+}
+
+// detectWaitingForPermission checks if the session is blocked waiting for user
+// approval. This is the case when the last assistant entry has a tool_use and
+// there's no subsequent tool_result or user entry — the tool call is pending.
+func detectWaitingForPermission(lines []string) bool {
+	// Scan backwards to find the last meaningful entry type.
+	for i := len(lines) - 1; i >= 0; i-- {
+		var obj map[string]any
+		if json.Unmarshal([]byte(lines[i]), &obj) != nil {
+			continue
+		}
+		entryType, _ := obj["type"].(string)
+
+		// If the last real entry is a user message or tool_result, not waiting.
+		if entryType == "user" {
+			return false
+		}
+
+		// Skip progress/system entries — they don't indicate tool completion.
+		if entryType == "progress" || entryType == "system" || entryType == "file-history-snapshot" {
+			continue
+		}
+
+		// Check if this is an assistant entry with tool_use.
+		msg, _ := obj["message"].(map[string]any)
+		role, _ := msg["role"].(string)
+		if role == "assistant" {
+			content, _ := msg["content"].([]any)
+			for _, c := range content {
+				cm, _ := c.(map[string]any)
+				if cm["type"] == "tool_use" {
+					return true // tool_use with no subsequent result = waiting
+				}
+			}
+			return false // assistant entry but no tool_use
+		}
+
+		// Any other entry type — not waiting.
+		return false
+	}
+	return false
 }
 
 // parseJSONL reads a session JSONL file and extracts the last user message text,
@@ -490,10 +537,12 @@ func parseJSONL(path string) (lastMessage, slug string, recentFiles []string, ex
 	// Extract tool activity.
 	recentTools := extractRecentTools(lines, 5)
 	currentTool, currentCommand := determineCurrentTool(lines)
+	waiting := detectWaitingForPermission(lines)
 	extras = sessionExtras{
-		currentTool:    currentTool,
-		currentCommand: currentCommand,
-		recentTools:    recentTools,
+		waitingForPermission: waiting,
+		currentTool:          currentTool,
+		currentCommand:       currentCommand,
+		recentTools:          recentTools,
 	}
 
 	return lastMessage, slug, recentFiles, extras

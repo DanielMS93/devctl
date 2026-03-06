@@ -199,6 +199,20 @@ func (m *Manager) pollAllWorktrees(ctx context.Context) tuimsg.StateSnapshot {
 		states = append(states, ts)
 	}
 
+	// Enrich worktree states with latest agent run status.
+	if m.runStore != nil {
+		for i := range states {
+			ws := &states[i]
+			if ws.RepoPath == "" || ws.Branch == "" {
+				continue
+			}
+			runs, err := m.runStore.ListByBranch(ctx, ws.RepoPath, ws.Branch)
+			if err == nil && len(runs) > 0 {
+				ws.AgentStatus = runs[0].Status // most recent run (sorted by triggered_at DESC)
+			}
+		}
+	}
+
 	// Idle branch detection: check all worktrees for inactivity.
 	if m.idleTracker != nil {
 		commitTimes := make(map[string]time.Time)
@@ -358,15 +372,16 @@ func mapClaudeSessions(sessions []claude.Session) []tuimsg.ClaudeSession {
 	result := make([]tuimsg.ClaudeSession, len(sessions))
 	for i, s := range sessions {
 		result[i] = tuimsg.ClaudeSession{
-			ID:             s.ID,
-			ProjectPath:    s.ProjectPath,
-			Slug:           s.Slug,
-			LastActivity:   s.LastActivity,
-			IsActive:       s.IsActive,
-			LastMessage:    s.LastMessage,
-			RecentFiles:    s.RecentFiles,
-			CurrentTool:    s.CurrentTool,
-			CurrentCommand: s.CurrentCommand,
+			ID:                   s.ID,
+			ProjectPath:          s.ProjectPath,
+			Slug:                 s.Slug,
+			LastActivity:         s.LastActivity,
+			IsActive:             s.IsActive,
+			WaitingForPermission: s.WaitingForPermission,
+			LastMessage:          s.LastMessage,
+			RecentFiles:          s.RecentFiles,
+			CurrentTool:          s.CurrentTool,
+			CurrentCommand:       s.CurrentCommand,
 		}
 	}
 	return result

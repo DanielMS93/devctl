@@ -16,8 +16,9 @@ type ClaudeSession struct {
 	IsActive       bool
 	LastMessage    string
 	RecentFiles    []string
-	CurrentTool    string // e.g. "Bash", "Read", "Write", "Edit"
-	CurrentCommand string // target being operated on (file path or truncated command)
+	CurrentTool          string // e.g. "Bash", "Read", "Write", "Edit"
+	CurrentCommand       string // target being operated on (file path or truncated command)
+	WaitingForPermission bool   // session is blocked waiting for user to approve a tool call
 }
 
 // ChangedFile represents one file with staged/unstaged status characters.
@@ -44,6 +45,7 @@ type WorktreeState struct {
 	ChangedFiles []ChangedFile
 	PolledAt     time.Time
 	Sessions     []ClaudeSession // Claude Code sessions for this worktree's repo
+	AgentStatus  string          // "", "running", "completed", "failed" — latest agent run status
 }
 
 // ResolvedTask is the TUI-side representation of a resolved task.

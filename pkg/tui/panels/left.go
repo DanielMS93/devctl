@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"charm.land/lipgloss/v2"
 	"github.com/danielmiessler/devctl/pkg/tui/tuimsg"
@@ -152,47 +153,61 @@ func buildLeftItems(worktrees []tuimsg.WorktreeState) (items []leftItem, selectI
 
 // renderRepoHeader renders a repo group header row.
 func renderRepoHeader(name string, width int) string {
-	label := lipgloss.NewStyle().
+	return lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("75")). // bright blue
 		Render(name)
-	return label
 }
 
-// statusIndicator derives a visual status indicator from existing WorktreeState fields.
-// Returns "●" for running (active Claude session), "!" for blocked (merge conflicts),
-// or "○" for idle.
-func statusIndicator(wt tuimsg.WorktreeState) string {
-	// Running: has at least one active Claude session
+// statusIndicator derives a visual status indicator from WorktreeState.
+// Priority: active session > just finished session > agent status > merge conflict > idle.
+func statusIndicator(wt tuimsg.WorktreeState) (indicator string, color string) {
+	// Check session states
+	var hasWaiting, hasActive, hasJustFinished bool
 	for _, s := range wt.Sessions {
-		if s.IsActive {
-			return "●"
+		if s.WaitingForPermission {
+			hasWaiting = true
+		} else if s.IsActive {
+			hasActive = true
+		} else if time.Since(s.LastActivity) < 30*time.Minute {
+			hasJustFinished = true
 		}
 	}
-	// Blocked: has merge conflicts (UU status in changed files)
+	if hasWaiting {
+		return "⚠", "5" // magenta — needs user input NOW
+	}
+	if hasActive {
+		return "●", "2" // green — session running
+	}
+	if hasJustFinished {
+		return "✓", "3" // yellow — just finished, needs attention
+	}
+	// Agent workflow status
+	if wt.AgentStatus == "running" {
+		return "⚙", "3" // yellow — agent in progress
+	}
+	if wt.AgentStatus == "failed" {
+		return "✗", "1" // red — agent failed
+	}
+	if wt.AgentStatus == "completed" {
+		return "✓", "6" // cyan — agent done
+	}
+	// Merge conflicts
 	for _, cf := range wt.ChangedFiles {
 		if cf.StagedStatus == 'U' || cf.UnstagedStatus == 'U' {
-			return "!"
+			return "!", "1" // red — conflicts
 		}
 	}
-	return "○"
+	return "○", "240" // dim — idle
 }
 
 // styledIndicator returns the status indicator with appropriate color applied.
-func styledIndicator(indicator string) string {
-	switch indicator {
-	case "●":
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Render(indicator) // green
-	case "!":
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Render(indicator) // red
-	default:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(indicator) // dim
-	}
+func styledIndicator(indicator, color string) string {
+	return lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Render(indicator)
 }
 
-// renderWorktreeRow renders a single worktree row as plain text layout, then
-// applies selection highlight. Critically: no ANSI-styled strings inside
-// fmt.Sprintf — that breaks width calculations and causes wrapping.
+// renderWorktreeRow renders a single worktree row. Plain text layout first,
+// then apply styling. No ANSI-styled strings inside fmt.Sprintf.
 func renderWorktreeRow(wt tuimsg.WorktreeState, selected, focused bool, width int) string {
 	cursor := "  "
 	if selected {
@@ -201,18 +216,16 @@ func renderWorktreeRow(wt tuimsg.WorktreeState, selected, focused bool, width in
 
 	branch := truncate(wt.Branch, 20)
 	stats := buildStats(wt)
-	indicator := statusIndicator(wt)
+	indicator, color := statusIndicator(wt)
 
+	// Build as plain text first for correct width calculation.
+	plainLine := fmt.Sprintf("%s %s%-20s  %s", indicator, cursor, branch, stats)
+
+	rowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(color))
 	if selected {
-		// For selected rows, use the styled indicator within the highlighted line.
-		styledLine := fmt.Sprintf("%s %s%-20s  %s", styledIndicator(indicator), cursor, branch, stats)
-		return lipgloss.NewStyle().
-			Background(lipgloss.Color("17")).
-			Bold(true).
-			Width(width).
-			Render(styledLine)
+		rowStyle = rowStyle.Background(lipgloss.Color("17")).Bold(true).Width(width)
 	}
-	return fmt.Sprintf("%s %s%-20s  %s", styledIndicator(indicator), cursor, branch, stats)
+	return rowStyle.Render(plainLine)
 }
 
 // buildStats produces a plain-text stats string for a worktree row.

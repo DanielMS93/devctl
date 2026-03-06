@@ -52,6 +52,10 @@ func (p *DetailPanel) SetWorktree(wt *tuimsg.WorktreeState) {
 
 // visibleSessions returns the sessions that should be displayed based on the
 // showAllSessions toggle.
+// recentThreshold is how long after going inactive a session stays visible
+// in the default (non-all) view as "just finished".
+const recentThreshold = 60 * time.Minute
+
 func (p *DetailPanel) visibleSessions() []tuimsg.ClaudeSession {
 	if p.worktree == nil {
 		return nil
@@ -59,13 +63,13 @@ func (p *DetailPanel) visibleSessions() []tuimsg.ClaudeSession {
 	if p.showAllSessions {
 		return p.worktree.Sessions
 	}
-	var active []tuimsg.ClaudeSession
+	var visible []tuimsg.ClaudeSession
 	for _, s := range p.worktree.Sessions {
-		if s.IsActive {
-			active = append(active, s)
+		if s.IsActive || time.Since(s.LastActivity) < recentThreshold {
+			visible = append(visible, s)
 		}
 	}
-	return active
+	return visible
 }
 
 func (p *DetailPanel) numSessions() int {
@@ -259,15 +263,28 @@ func renderSessionRow(s tuimsg.ClaudeSession, selected bool, width int) string {
 		cursor = "> "
 	}
 
-	// Status: colored dot + text marker.
+	// Status: colored marker based on recency.
 	var statusMarker string
 	var statusLen int // visible character count of the marker
-	if s.IsActive {
+	elapsed := time.Since(s.LastActivity)
+	if s.WaitingForPermission {
+		// Blocked on user approval — needs immediate attention
+		statusMarker = lipgloss.NewStyle().Foreground(lipgloss.Color("5")).Bold(true).Render("⚠ WAIT")
+		statusLen = 6
+	} else if s.IsActive {
 		statusMarker = lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Bold(true).Render("● RUN")
-		statusLen = 5 // "● RUN"
+		statusLen = 5
+	} else if elapsed < 30*time.Minute {
+		// Just finished — needs attention
+		statusMarker = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true).Render("✓ DONE")
+		statusLen = 6
+	} else if elapsed < recentThreshold {
+		// Recently finished
+		statusMarker = lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Render("✓ done")
+		statusLen = 6
 	} else {
 		statusMarker = dim.Render("○ idle")
-		statusLen = 6 // "○ idle"
+		statusLen = 6
 	}
 
 	// Use last message as the primary label (more descriptive than slug/ID).
