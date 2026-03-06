@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-03-05)
 ## Current Position
 
 Phase: 6 of 6 (AI Observability)
-Plan: 1 of 6 in current phase — COMPLETE
-Status: Agent data layer complete; migration 005, CRUD stores, viper config
-Last activity: 2026-03-06 — Plan 06-01 complete; agent_runs/agent_patches tables, AgentRunStore, PatchStore, AgentConfig
+Plan: 2 of 6 in current phase — COMPLETE
+Status: Tool activity extraction from JSONL with CurrentTool/CurrentCommand in TUI session rows
+Last activity: 2026-03-06 — Plan 06-02 complete; scanner tool extraction, tuimsg propagation, right panel rendering
 
 Progress: [████████████] 70%
 
@@ -44,6 +44,7 @@ Progress: [████████████] 70%
 | Phase 05-tasks-and-dependencies P02 | 2 min | 2 tasks | 3 files |
 | Phase 05-tasks-and-dependencies P04 | 3 min | 2 tasks | 4 files |
 | Phase 06-ai-observability P01 | 2 min | 2 tasks | 5 files |
+| Phase 06-ai-observability P02 | 4 min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -98,6 +99,9 @@ Recent decisions affecting current work:
 - [06-01] Nullable DB columns (completed_at, error_msg, etc.) use Go pointer types for proper NULL roundtrip
 - [06-01] AgentRunStore.UpdateStatus auto-sets completed_at on completed/failed transitions
 - [06-01] Known workflows loaded explicitly from viper rather than dynamic mapstructure unmarshalling
+- [06-02] sessionExtras struct extends parseJSONL return values rather than growing positional returns
+- [06-02] Currently executing tool determined by last assistant tool_use index vs last user entry index
+- [06-02] Tool activity rendered as dim yellow third line only when CurrentTool is non-empty
 
 ### Pending Todos
 
@@ -110,5 +114,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-06
-Stopped at: Completed 06-01-PLAN.md
+Stopped at: Completed 06-02-PLAN.md
 Resume file: None
