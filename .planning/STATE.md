@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-03-05)
 
 **Core value:** A developer can open `devctl dashboard` and immediately see everything happening across all their repos and worktrees — no lost sessions, no forgotten branches, no missed follow-ups.
-**Current focus:** Phase 2 - Git Integration
+**Current focus:** Phase 3 - Dashboard TUI
 
 ## Current Position
 
-Phase: 2 of 6 (Git Integration) — IN PROGRESS
-Plan: 7 of 7 in current phase — COMPLETE
-Status: Phase 2 all plans complete; GIT-09 closed; devctl worktree create copies repo_copy_files; devctl config subcommands available
-Last activity: 2026-03-05 — Plan 02-07 complete; file copy on worktree create; config set-copy-files/list-copy-files/set subcommands
+Phase: 3 of 6 (Dashboard TUI) — IN PROGRESS
+Plan: 1 of 2 in current phase — COMPLETE
+Status: Plan 03-01 complete; worktree status indicators and OpenDiff entry point added
+Last activity: 2026-03-06 — Plan 03-01 complete; status indicators in left panel; OpenDiff on ViewerModel
 
-Progress: [███████░░░] 40%
+Progress: [████████░░] 45%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
+- Total plans completed: 10
 - Average duration: 4 min
-- Total execution time: 0.27 hours
+- Total execution time: 0.29 hours
 
 **By Phase:**
 
@@ -38,6 +38,7 @@ Progress: [███████░░░] 40%
 
 | Phase 02-git-integration P05 | 5 min | 2 tasks | 3 files |
 | Phase 02-git-integration P06 | 2 | 2 tasks | 5 files |
+| Phase 03-dashboard-tui P01 | 1 min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -77,6 +78,8 @@ Recent decisions affecting current work:
 - [Phase 02-git-integration]: Selection propagated to rightPanel immediately on navigation and on every StateEvent to keep panels in sync
 - [Phase 02-git-integration]: ViewerModel is plain struct not tea.Model: drives sub-model from root.go Update() to avoid nested Bubbletea program complexity
 - [Phase 02-git-integration]: chroma quick.Highlight with terminal256/monokai: graceful degradation to plain text on highlight error
+- [03-01] Status derived purely from existing WorktreeState fields (Sessions, ChangedFiles) -- no new tuimsg types needed
+- [03-01] Styled indicator rendered inline rather than plain-text-then-recolor to keep ANSI handling simple
 
 ### Pending Todos
 
@@ -89,6 +92,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-05
-Stopped at: Checkpoint 02-06 Task 3 — waiting for human verification of inline viewer (changed files list, Enter-to-open, d/f/e/Esc)
+Last session: 2026-03-06
+Stopped at: Completed 03-01-PLAN.md
 Resume file: None
