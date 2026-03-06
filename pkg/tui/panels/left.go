@@ -159,6 +159,37 @@ func renderRepoHeader(name string, width int) string {
 	return label
 }
 
+// statusIndicator derives a visual status indicator from existing WorktreeState fields.
+// Returns "●" for running (active Claude session), "!" for blocked (merge conflicts),
+// or "○" for idle.
+func statusIndicator(wt tuimsg.WorktreeState) string {
+	// Running: has at least one active Claude session
+	for _, s := range wt.Sessions {
+		if s.IsActive {
+			return "●"
+		}
+	}
+	// Blocked: has merge conflicts (UU status in changed files)
+	for _, cf := range wt.ChangedFiles {
+		if cf.StagedStatus == 'U' || cf.UnstagedStatus == 'U' {
+			return "!"
+		}
+	}
+	return "○"
+}
+
+// styledIndicator returns the status indicator with appropriate color applied.
+func styledIndicator(indicator string) string {
+	switch indicator {
+	case "●":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Render(indicator) // green
+	case "!":
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Render(indicator) // red
+	default:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(indicator) // dim
+	}
+}
+
 // renderWorktreeRow renders a single worktree row as plain text layout, then
 // applies selection highlight. Critically: no ANSI-styled strings inside
 // fmt.Sprintf — that breaks width calculations and causes wrapping.
@@ -170,18 +201,18 @@ func renderWorktreeRow(wt tuimsg.WorktreeState, selected, focused bool, width in
 
 	branch := truncate(wt.Branch, 20)
 	stats := buildStats(wt)
-
-	// Plain-text row; all parts are unstyled strings so fmt.Sprintf widths are correct.
-	line := fmt.Sprintf("  %s%-20s  %s", cursor, branch, stats)
+	indicator := statusIndicator(wt)
 
 	if selected {
+		// For selected rows, use the styled indicator within the highlighted line.
+		styledLine := fmt.Sprintf("%s %s%-20s  %s", styledIndicator(indicator), cursor, branch, stats)
 		return lipgloss.NewStyle().
 			Background(lipgloss.Color("17")).
 			Bold(true).
 			Width(width).
-			Render(line)
+			Render(styledLine)
 	}
-	return line
+	return fmt.Sprintf("%s %s%-20s  %s", styledIndicator(indicator), cursor, branch, stats)
 }
 
 // buildStats produces a plain-text stats string for a worktree row.
