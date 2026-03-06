@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-03-05)
 ## Current Position
 
 Phase: 6 of 6 (AI Observability)
-Plan: 5 of 6 in current phase — COMPLETE
-Status: Patch lifecycle CLI with apply/revert/edit and agent config management
-Last activity: 2026-03-06 — Plan 06-05 complete; git patch ops, agent CLI commands
+Plan: 6 of 6 in current phase — CHECKPOINT PENDING
+Status: TUI patch review panel built; awaiting full Phase 6 human verification
+Last activity: 2026-03-06 — Plan 06-06 Tasks 1-2 complete; Task 3 checkpoint pending
 
-Progress: [██████████████████] 92%
+Progress: [███████████████████] 97%
 
 ## Performance Metrics
 
@@ -48,6 +48,7 @@ Progress: [██████████████████] 92%
 | Phase 06-ai-observability P03 | 4 min | 2 tasks | 5 files |
 | Phase 06-ai-observability P04 | 3 min | 2 tasks | 5 files |
 | Phase 06-ai-observability P05 | 3 min | 2 tasks | 5 files |
+| Phase 06-ai-observability P06 | 4 min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -116,6 +117,9 @@ Recent decisions affecting current work:
 - [06-05] CheckPatch called before ApplyPatch as pre-flight validation
 - [06-05] $EDITOR fallback to vi when env var unset
 - [06-05] Edit only allowed on draft/approved patches (not applied/reverted/rejected)
+- [06-06] PatchStatusUpdater interface in panels pkg prevents import cycle with internal/agent
+- [06-06] Explicit nil check for PatchStore->interface conversion avoids non-nil interface wrapping nil pointer
+- [06-06] Apply/revert remain CLI-only; approve/reject are safe DB-only operations for TUI
 
 ### Pending Todos
 
@@ -128,5 +132,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-06
-Stopped at: Completed 06-05-PLAN.md
+Stopped at: 06-06-PLAN.md Tasks 1-2 complete; Task 3 checkpoint:human-verify pending
 Resume file: None
