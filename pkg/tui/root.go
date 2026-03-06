@@ -23,10 +23,12 @@ type RootModel struct {
 	height      int
 	activePanel PanelID
 
-	leftPanel  panels.RepoPanel
-	rightPanel panels.DetailPanel
-	viewer     panels.ViewerModel
-	logBar     panels.LogBar
+	leftPanel     panels.RepoPanel
+	rightPanel    panels.DetailPanel
+	taskGraph     panels.TaskGraphPanel
+	showTaskGraph bool
+	viewer        panels.ViewerModel
+	logBar        panels.LogBar
 
 	stateChan <-chan StateEvent
 }
@@ -36,6 +38,7 @@ func NewRootModel(events <-chan StateEvent) RootModel {
 	return RootModel{
 		leftPanel:  panels.NewRepoPanel(),
 		rightPanel: panels.NewDetailPanel(),
+		taskGraph:  panels.NewTaskGraphPanel(),
 		viewer:     panels.NewViewerModel(),
 		logBar:     panels.NewLogBar(),
 		stateChan:  events,
@@ -76,14 +79,27 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.leftPanel.MoveUp()
 				m.rightPanel.SetWorktree(m.leftPanel.SelectedWorktree())
 			} else if m.activePanel == PanelRight {
-				m.rightPanel.MoveUp()
+				if m.showTaskGraph {
+					m.taskGraph.ScrollUp()
+				} else {
+					m.rightPanel.MoveUp()
+				}
 			}
 		case "down", "j":
 			if m.activePanel == PanelLeft {
 				m.leftPanel.MoveDown()
 				m.rightPanel.SetWorktree(m.leftPanel.SelectedWorktree())
 			} else if m.activePanel == PanelRight {
-				m.rightPanel.MoveDown()
+				if m.showTaskGraph {
+					m.taskGraph.ScrollDown()
+				} else {
+					m.rightPanel.MoveDown()
+				}
+			}
+		case "esc":
+			if m.showTaskGraph {
+				m.showTaskGraph = false
+				m.logBar.SetStatus("")
 			}
 		case "enter":
 			if m.activePanel == PanelLeft {
@@ -122,8 +138,17 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, panels.LaunchClaudeSession(s.ID, s.ProjectPath)
 				}
 			}
+		case "n":
+			if wt := m.leftPanel.SelectedWorktree(); wt != nil {
+				return m, panels.LaunchNewClaudeSession(wt.WorktreePath)
+			}
 		case "t":
-			m.logBar.SetStatus("Tasks: coming in Phase 5")
+			m.showTaskGraph = !m.showTaskGraph
+			if m.showTaskGraph {
+				m.logBar.SetStatus("Task graph view (t to close)")
+			} else {
+				m.logBar.SetStatus("")
+			}
 		}
 
 	case tea.WindowSizeMsg:
@@ -134,6 +159,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case StateEvent:
 		m.leftPanel.SetState(msg)
 		m.rightPanel.SetWorktree(m.leftPanel.SelectedWorktree())
+		m.taskGraph.SetGraph(msg.Snapshot.TaskGraph)
 		// Re-arm: exactly one goroutine blocks on the channel at a time.
 		cmds = append(cmds, m.subscribeToStateEvents())
 
@@ -167,6 +193,8 @@ func (m RootModel) View() tea.View {
 	var right string
 	if m.viewer.Visible {
 		right = m.viewer.View()
+	} else if m.showTaskGraph {
+		right = m.taskGraph.View()
 	} else {
 		right = m.rightPanel.View()
 	}
@@ -203,7 +231,9 @@ func (m *RootModel) propagateSizes() {
 	m.leftPanel.SetSize(leftWidth, bodyHeight)
 	m.leftPanel.SetFocused(m.activePanel == PanelLeft)
 	m.rightPanel.SetSize(rightWidth, bodyHeight)
-	m.rightPanel.SetFocused(m.activePanel == PanelRight)
+	m.rightPanel.SetFocused(m.activePanel == PanelRight && !m.showTaskGraph)
+	m.taskGraph.SetSize(rightWidth, bodyHeight)
+	m.taskGraph.SetFocused(m.activePanel == PanelRight && m.showTaskGraph)
 	m.viewer.SetSize(rightWidth, bodyHeight)
 	m.logBar.SetWidth(m.width)
 }
