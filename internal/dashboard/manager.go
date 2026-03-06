@@ -223,6 +223,11 @@ func (m *Manager) pollAllWorktrees(ctx context.Context) tuimsg.StateSnapshot {
 		snapshot.TaskGraph = m.resolveTaskGraph(ctx, states)
 	}
 
+	// Collect agent patches if agent features are enabled.
+	if m.patchStore != nil {
+		snapshot.Patches = m.collectPatches(ctx)
+	}
+
 	return snapshot
 }
 
@@ -357,6 +362,43 @@ func mapClaudeSessions(sessions []claude.Session) []tuimsg.ClaudeSession {
 			RecentFiles:    s.RecentFiles,
 			CurrentTool:    s.CurrentTool,
 			CurrentCommand: s.CurrentCommand,
+		}
+	}
+	return result
+}
+
+// collectPatches queries the patch store for all reviewable patches (draft, approved, applied).
+func (m *Manager) collectPatches(ctx context.Context) tuimsg.PatchSnapshot {
+	var allPatches []agent.AgentPatch
+	for _, status := range []string{"draft", "approved", "applied"} {
+		patches, err := m.patchStore.ListByStatus(ctx, status)
+		if err != nil {
+			slog.Warn("poll: patch list", "status", status, "err", err)
+			continue
+		}
+		allPatches = append(allPatches, patches...)
+	}
+	return tuimsg.PatchSnapshot{Patches: mapAgentPatches(allPatches)}
+}
+
+// mapAgentPatches converts internal agent.AgentPatch to tuimsg.AgentPatch.
+func mapAgentPatches(patches []agent.AgentPatch) []tuimsg.AgentPatch {
+	result := make([]tuimsg.AgentPatch, len(patches))
+	for i, p := range patches {
+		desc := ""
+		if p.Description != nil {
+			desc = *p.Description
+		}
+		result[i] = tuimsg.AgentPatch{
+			ID:          p.ID,
+			RunID:       p.RunID,
+			RepoPath:    p.RepoPath,
+			Branch:      p.Branch,
+			Title:       p.Title,
+			Description: desc,
+			PatchData:   p.PatchData,
+			Status:      p.Status,
+			CreatedAt:   time.Unix(p.CreatedAt, 0),
 		}
 	}
 	return result

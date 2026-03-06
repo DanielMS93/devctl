@@ -64,12 +64,31 @@ type TaskGraphSnapshot struct {
 	HasCycle bool
 }
 
+// AgentPatch is the TUI-side representation of a generated patch from an agent run.
+type AgentPatch struct {
+	ID          string
+	RunID       string
+	RepoPath    string
+	Branch      string
+	Title       string
+	Description string
+	PatchData   string // the actual diff content
+	Status      string // draft, approved, applied, rejected, reverted
+	CreatedAt   time.Time
+}
+
+// PatchSnapshot holds all active agent patches for TUI rendering.
+type PatchSnapshot struct {
+	Patches []AgentPatch
+}
+
 // StateSnapshot is the point-in-time snapshot of all tracked state delivered to the TUI.
 // Worktrees contains one entry per DB-tracked worktree, populated by Manager.pollLoop.
 type StateSnapshot struct {
 	UpdatedAt time.Time
 	Worktrees []WorktreeState
 	TaskGraph TaskGraphSnapshot
+	Patches   PatchSnapshot
 }
 
 // StateEvent is the tea.Msg delivered to RootModel.Update() when the
