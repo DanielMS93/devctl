@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-03-05)
 ## Current Position
 
 Phase: 6 of 6 (AI Observability)
-Plan: 2 of 6 in current phase — COMPLETE
-Status: Tool activity extraction from JSONL with CurrentTool/CurrentCommand in TUI session rows
-Last activity: 2026-03-06 — Plan 06-02 complete; scanner tool extraction, tuimsg propagation, right panel rendering
+Plan: 3 of 6 in current phase — COMPLETE
+Status: Live session viewer with JSONL tailer and auto-scrolling formatted log panel
+Last activity: 2026-03-06 — Plan 06-03 complete; JSONLTailer, SessionViewer panel, 'l' key wiring
 
-Progress: [████████████] 70%
+Progress: [██████████████] 78%
 
 ## Performance Metrics
 
@@ -45,6 +45,7 @@ Progress: [████████████] 70%
 | Phase 05-tasks-and-dependencies P04 | 3 min | 2 tasks | 4 files |
 | Phase 06-ai-observability P01 | 2 min | 2 tasks | 5 files |
 | Phase 06-ai-observability P02 | 4 min | 2 tasks | 5 files |
+| Phase 06-ai-observability P03 | 4 min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -102,6 +103,10 @@ Recent decisions affecting current work:
 - [06-02] sessionExtras struct extends parseJSONL return values rather than growing positional returns
 - [06-02] Currently executing tool determined by last assistant tool_use index vs last user entry index
 - [06-02] Tool activity rendered as dim yellow third line only when CurrentTool is non-empty
+- [06-03] Open-read-close pattern per tick avoids stale file handles (per research pitfall 2)
+- [06-03] Non-blocking channel send prevents tailer from blocking on slow TUI consumption
+- [06-03] Offset initialized to file size: only NEW entries stream, no history replay
+- [06-03] tea.Cmd polling pattern for async channel reads — re-arm pollTailer on each entry
 
 ### Pending Todos
 
@@ -114,5 +119,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-06
-Stopped at: Completed 06-02-PLAN.md
+Stopped at: Completed 06-03-PLAN.md
 Resume file: None
