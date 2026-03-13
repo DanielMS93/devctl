@@ -10,6 +10,7 @@ import (
 	"github.com/danielmiessler/devctl/internal/claude"
 	"github.com/danielmiessler/devctl/internal/dependency"
 	"github.com/danielmiessler/devctl/internal/git"
+	"github.com/danielmiessler/devctl/internal/idea"
 	"github.com/danielmiessler/devctl/internal/task"
 	"github.com/danielmiessler/devctl/pkg/tui"
 	"github.com/danielmiessler/devctl/pkg/tui/tuimsg"
@@ -25,6 +26,8 @@ type Manager struct {
 	cancel       context.CancelFunc
 	taskStore    *task.TaskStore
 	depStore     *dependency.DepStore
+	ideaStore    *idea.Store
+	ideaExecutor *idea.Executor
 	idleTracker  *agent.IdleTracker
 	runStore     *agent.AgentRunStore
 	patchStore   *agent.PatchStore
@@ -40,6 +43,8 @@ func NewManager(db *sqlx.DB) *Manager {
 	if db != nil {
 		m.taskStore = task.NewStore(db)
 		m.depStore = dependency.NewStore(db)
+		m.ideaStore = idea.NewStore(db)
+		m.ideaExecutor = idea.NewExecutor(m.ideaStore)
 
 		cfg := agent.LoadConfig()
 		if cfg.Enabled {
@@ -73,6 +78,42 @@ func (m *Manager) Events() <-chan tui.StateEvent {
 // PatchStore returns the patch store if agent features are enabled, or nil.
 func (m *Manager) PatchStore() *agent.PatchStore {
 	return m.patchStore
+}
+
+// IdeaStore returns the idea store.
+func (m *Manager) IdeaStore() *idea.Store {
+	return m.ideaStore
+}
+
+// IdeaCreatorAdapter wraps idea.Store to implement the panels.IdeaCreator interface.
+type IdeaCreatorAdapter struct {
+	store *idea.Store
+}
+
+// NewIdeaCreatorAdapter creates an adapter.
+func NewIdeaCreatorAdapter(store *idea.Store) *IdeaCreatorAdapter {
+	if store == nil {
+		return nil
+	}
+	return &IdeaCreatorAdapter{store: store}
+}
+
+// CreateIdea creates a side-quest idea and returns its short ID.
+func (a *IdeaCreatorAdapter) CreateIdea(ctx context.Context, prompt, repoPath, parentSessionID, parentBranch string) (string, error) {
+	i, err := a.store.Create(ctx, prompt, repoPath, "side", parentSessionID, parentBranch)
+	if err != nil {
+		return "", err
+	}
+	id := i.ID
+	if len(id) > 8 {
+		id = id[:8]
+	}
+	return id, nil
+}
+
+// IdeaCreator returns an IdeaCreatorAdapter, or nil if ideas are not available.
+func (m *Manager) IdeaCreator() *IdeaCreatorAdapter {
+	return NewIdeaCreatorAdapter(m.ideaStore)
 }
 
 // pollLoop emits StateEvents every 5 seconds.
@@ -245,6 +286,12 @@ func (m *Manager) pollAllWorktrees(ctx context.Context) tuimsg.StateSnapshot {
 	// Collect agent patches if agent features are enabled.
 	if m.patchStore != nil {
 		snapshot.Patches = m.collectPatches(ctx)
+	}
+
+	// Resolve idea graph and process pipeline.
+	if m.ideaStore != nil {
+		snapshot.IdeaGraph = m.resolveIdeaGraph(ctx)
+		m.processIdeaPipeline(ctx, snapshot.IdeaGraph, states)
 	}
 
 	return snapshot
@@ -438,6 +485,94 @@ func (m *Manager) persistState(ctx context.Context, worktreeID string, ts tuimsg
 	if err != nil {
 		slog.Error("persist state", "worktree_id", worktreeID, "err", err)
 	}
+}
+
+// resolveIdeaGraph fetches ideas and deps, resolves the DAG.
+func (m *Manager) resolveIdeaGraph(ctx context.Context) tuimsg.IdeaGraphSnapshot {
+	ideas, err := m.ideaStore.List(ctx)
+	if err != nil {
+		slog.Warn("poll: idea list", "err", err)
+		return tuimsg.IdeaGraphSnapshot{}
+	}
+	deps, err := m.ideaStore.ListAllDeps(ctx)
+	if err != nil {
+		slog.Warn("poll: idea dep list", "err", err)
+		return tuimsg.IdeaGraphSnapshot{}
+	}
+	if len(ideas) == 0 {
+		return tuimsg.IdeaGraphSnapshot{}
+	}
+
+	resolved, err := idea.Resolve(ideas, deps)
+	hasCycle := err != nil
+	return tuimsg.IdeaGraphSnapshot{
+		Ideas:    mapResolvedIdeas(resolved),
+		HasCycle: hasCycle,
+	}
+}
+
+// processIdeaPipeline finds ready ideas and launches them.
+func (m *Manager) processIdeaPipeline(ctx context.Context, graph tuimsg.IdeaGraphSnapshot, states []tuimsg.WorktreeState) {
+	if m.ideaExecutor == nil {
+		return
+	}
+	for _, ri := range graph.Ideas {
+		if !ri.IsReady {
+			continue
+		}
+		// Find the corresponding internal idea for launching.
+		internalIdea, err := m.ideaStore.Get(ctx, ri.ID)
+		if err != nil {
+			continue
+		}
+		// Determine repo path: try to find from worktree states by repo_id match.
+		repoPath := internalIdea.RepoID // repo_id stores the path for MCP-created ideas
+		if repoPath == "" {
+			for _, ws := range states {
+				if ws.RepoPath != "" {
+					repoPath = ws.RepoPath
+					break
+				}
+			}
+		}
+		if repoPath == "" {
+			continue
+		}
+		m.ideaExecutor.TryLaunch(ctx, internalIdea, repoPath)
+	}
+}
+
+// mapResolvedIdeas converts internal idea.ResolvedIdea to tuimsg.ResolvedIdea.
+func mapResolvedIdeas(resolved []idea.ResolvedIdea) []tuimsg.ResolvedIdea {
+	result := make([]tuimsg.ResolvedIdea, len(resolved))
+	for i, ri := range resolved {
+		blockedBy := make([]string, len(ri.BlockedBy))
+		for j, id := range ri.BlockedBy {
+			if len(id) > 8 {
+				id = id[:8]
+			}
+			blockedBy[j] = id
+		}
+		errMsg := ""
+		if ri.Idea.ErrorMsg != nil {
+			errMsg = *ri.Idea.ErrorMsg
+		}
+		result[i] = tuimsg.ResolvedIdea{
+			ID:           ri.Idea.ID,
+			Prompt:       ri.Idea.Prompt,
+			State:        ri.Idea.State,
+			Kind:         ri.Idea.Kind,
+			IsReady:      ri.IsReady,
+			IsBlocked:    ri.IsBlocked,
+			BlockedBy:    blockedBy,
+			Layer:        ri.Layer,
+			Incorporated: ri.Idea.Incorporated == 1,
+			Branch:       ri.Idea.Branch,
+			ErrorMsg:     errMsg,
+			CreatedAt:    time.Unix(ri.Idea.CreatedAt, 0),
+		}
+	}
+	return result
 }
 
 // loadCachedSnapshot reads the worktree_state cache from DB for instant startup rendering.

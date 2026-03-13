@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS idea_deps;
+DROP TABLE IF EXISTS ideas;

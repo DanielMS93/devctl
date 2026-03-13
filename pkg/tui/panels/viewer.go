@@ -47,20 +47,21 @@ func LaunchNewClaudeSession(projectPath string) tea.Cmd {
 }
 
 // openClaudeInNewWindow launches claude --resume in a docked pane (iTerm2 vertical split)
-// or a new tab (Terminal.app). Uses a login shell so PATH includes ~/go/bin etc.
-// Appends `; exec $SHELL` so the pane stays open after Claude exits.
+// or a new tab (Terminal.app). If the session is already running in an iTerm2 pane,
+// it focuses that pane instead of opening a new one.
 func openClaudeInNewWindow(sessionID, projectPath string) error {
 	claudePath := findClaudeBin()
 
 	// Single-quote the path for the shell; path is unlikely to contain ' but handle it.
 	safePath := strings.ReplaceAll(projectPath, `'`, `'"'"'`)
-	// write text types this into the already-running zsh in the new pane, so no
-	// zsh -l -c wrapper needed. Using the full claudePath avoids any PATH issues.
-	// Trailing `; exec $SHELL` keeps the pane open after Claude exits.
 	shellCmd := fmt.Sprintf("cd '%s' && %s --resume %s; exec $SHELL", safePath, claudePath, sessionID)
 
 	switch os.Getenv("TERM_PROGRAM") {
 	case "iTerm.app":
+		// Try to focus an existing pane running this session first.
+		if focusITerm2Session(sessionID) {
+			return nil
+		}
 		return runAppleScript(iterm2SplitScript(shellCmd))
 	default:
 		return runAppleScript(terminalAppTabScript(shellCmd))
@@ -79,6 +80,38 @@ func openNewClaudeInWindow(projectPath string) error {
 	default:
 		return runAppleScript(terminalAppTabScript(shellCmd))
 	}
+}
+
+// focusITerm2Session searches all iTerm2 panes for one whose tty is running
+// `claude --resume <sessionID>` and selects it. Returns true if found.
+func focusITerm2Session(sessionID string) bool {
+	// Ask iTerm2 for all session TTYs, then check if any is running this session.
+	script := fmt.Sprintf(`tell application "iTerm2"
+	repeat with w in windows
+		repeat with t in tabs of w
+			repeat with s in sessions of t
+				set ttyName to (tty of s)
+				set cmdResult to (do shell script "ps -o args= -g $(ps -o pgrp= -p $(lsof -t " & ttyName & " 2>/dev/null | head -1) 2>/dev/null) 2>/dev/null | grep -c '\\-\\-resume %s' || true")
+				if cmdResult is not "0" then
+					select t
+					select s
+					tell w to select
+					tell application "iTerm2" to activate
+					return "found"
+				end if
+			end repeat
+		end repeat
+	end repeat
+	return "notfound"
+end tell`, sessionID)
+
+	cmd := exec.Command("osascript")
+	cmd.Stdin = strings.NewReader(script)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return false
+	}
+	return strings.TrimSpace(string(out)) == "found"
 }
 
 // iterm2SplitScript returns AppleScript that splits the current iTerm2 window

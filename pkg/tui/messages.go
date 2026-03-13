@@ -18,3 +18,6 @@ type StateEvent = tuimsg.StateEvent
 
 // PatchStatusUpdater re-exports the interface from panels for external callers.
 type PatchStatusUpdater = panels.PatchStatusUpdater
+
+// IdeaCreator re-exports the interface from panels for external callers.
+type IdeaCreator = panels.IdeaCreator

@@ -9,6 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 
 	"github.com/danielmiessler/devctl/internal/dashboard"
 	"github.com/danielmiessler/devctl/pkg/storage"
@@ -29,6 +30,17 @@ func main() {
 	dataDir := filepath.Join(homeDir, ".devctl")
 	dbPath := filepath.Join(dataDir, "state.db")
 	logPath := filepath.Join(dataDir, "devctl.log")
+
+	// Viper config: ~/.devctl/config.yaml
+	viper.SetConfigName("config")
+	viper.SetConfigType("yaml")
+	viper.AddConfigPath(dataDir)
+	if err := viper.ReadInConfig(); err != nil {
+		// Config file is optional — defaults are set in agent.LoadConfig().
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			fmt.Fprintf(os.Stderr, "devctl: read config: %v\n", err)
+		}
+	}
 
 	// Structured log file (non-interactive output; TUI owns the terminal).
 	logFile, err := openLogFile(logPath)
@@ -85,6 +97,8 @@ repos and worktrees — no lost sessions, no forgotten branches, no missed follo
 	root.AddCommand(taskCmd)
 	root.AddCommand(depsCmd)
 	root.AddCommand(agentCmd)
+	root.AddCommand(ideaCmd)
+	root.AddCommand(mcpCmd)
 
 	// Shell completion: worktree create <repo> completes from registered repo names.
 	worktreeCreateCmd.ValidArgsFunction = repoNameCompletion(db)
@@ -102,7 +116,11 @@ func runDashboard(mgr *dashboard.Manager) error {
 	if ps := mgr.PatchStore(); ps != nil {
 		patchUpdater = ps
 	}
-	m := tui.NewRootModel(mgr.Events(), patchUpdater)
+	var ideaCreator tui.IdeaCreator
+	if ic := mgr.IdeaCreator(); ic != nil {
+		ideaCreator = ic
+	}
+	m := tui.NewRootModel(mgr.Events(), patchUpdater, ideaCreator)
 	// v2: AltScreen is set declaratively in View(); do NOT use tea.WithAltScreen().
 	// v2: Use p.Run(), not p.Start() (removed in v2).
 	p := tea.NewProgram(m)

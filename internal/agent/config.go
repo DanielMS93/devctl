@@ -7,9 +7,13 @@ import (
 )
 
 // WorkflowConfig holds per-workflow configuration.
+// Either Command or PromptFile should be set:
+//   - Command: a raw shell command (run via sh -c)
+//   - PromptFile: path to a markdown skill/prompt file passed to `claude --print`
 type WorkflowConfig struct {
-	Enabled bool   `mapstructure:"enabled"`
-	Command string `mapstructure:"command"`
+	Enabled    bool   `mapstructure:"enabled"`
+	Command    string `mapstructure:"command"`
+	PromptFile string `mapstructure:"prompt_file"`
 }
 
 // AgentConfig holds all agent-related configuration loaded from viper.
@@ -28,9 +32,11 @@ func LoadConfig() AgentConfig {
 	viper.SetDefault("agent.idle_threshold_minutes", 20)
 	viper.SetDefault("agent.cooldown_minutes", 60)
 	viper.SetDefault("agent.max_patch_size_kb", 1024)
-	viper.SetDefault("agent.workflows.code_review.enabled", true)
-	viper.SetDefault("agent.workflows.code_review.command", "claude --print 'Review this branch for issues'")
+	viper.SetDefault("agent.workflows.code_review.enabled", false)
+	viper.SetDefault("agent.workflows.code_review.command", "")
+	viper.SetDefault("agent.workflows.code_review.prompt_file", "")
 	viper.SetDefault("agent.workflows.test_generation.enabled", false)
+	viper.SetDefault("agent.workflows.test_generation.prompt_file", "")
 	viper.SetDefault("agent.disabled_repos", []string{})
 
 	cfg := AgentConfig{
@@ -44,11 +50,23 @@ func LoadConfig() AgentConfig {
 
 	// Load workflow configs. Viper doesn't natively unmarshal nested maps well,
 	// so we read known workflows explicitly.
-	workflows := []string{"code_review", "test_generation"}
-	for _, wf := range workflows {
+	// Load known workflows + any custom ones from config.
+	knownWorkflows := []string{"code_review", "test_generation"}
+	// Also discover any extra workflow keys from viper.
+	allWorkflows := make(map[string]bool)
+	for _, wf := range knownWorkflows {
+		allWorkflows[wf] = true
+	}
+	if sub := viper.GetStringMap("agent.workflows"); sub != nil {
+		for wf := range sub {
+			allWorkflows[wf] = true
+		}
+	}
+	for wf := range allWorkflows {
 		cfg.Workflows[wf] = WorkflowConfig{
-			Enabled: viper.GetBool("agent.workflows." + wf + ".enabled"),
-			Command: viper.GetString("agent.workflows." + wf + ".command"),
+			Enabled:    viper.GetBool("agent.workflows." + wf + ".enabled"),
+			Command:    viper.GetString("agent.workflows." + wf + ".command"),
+			PromptFile: viper.GetString("agent.workflows." + wf + ".prompt_file"),
 		}
 	}
 

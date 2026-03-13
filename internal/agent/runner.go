@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -31,7 +32,7 @@ func NewWorkflowRunner(runStore *AgentRunStore, patchStore *PatchStore, cfg Agen
 // RunWorkflows executes all enabled workflows for the given idle branch.
 func (r *WorkflowRunner) RunWorkflows(ctx context.Context, idle IdleBranch) {
 	for name, wf := range r.config.Workflows {
-		if !wf.Enabled || wf.Command == "" {
+		if !wf.Enabled || (wf.Command == "" && wf.PromptFile == "") {
 			continue
 		}
 
@@ -66,11 +67,20 @@ func (r *WorkflowRunner) runWorkflow(ctx context.Context, name string, wf Workfl
 
 	slog.Info("starting workflow", "workflow", name, "repo", idle.RepoPath, "branch", idle.Branch)
 
+	// Resolve the shell command: either a raw command or a prompt file → claude --print.
+	shellCmd, err := r.resolveCommand(wf, idle)
+	if err != nil {
+		errMsg := err.Error()
+		_ = r.runStore.UpdateStatus(ctx, run.ID, "failed", &errMsg)
+		slog.Warn("workflow resolve failed", "workflow", name, "err", err)
+		return
+	}
+
 	// Execute with 5-minute timeout.
 	runCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 
-	cmd := exec.CommandContext(runCtx, "sh", "-c", wf.Command)
+	cmd := exec.CommandContext(runCtx, "sh", "-c", shellCmd)
 	cmd.Dir = idle.RepoPath
 
 	var stdout, stderr bytes.Buffer
@@ -119,6 +129,64 @@ func (r *WorkflowRunner) runWorkflow(ctx context.Context, name string, wf Workfl
 // This should only be called from Manager (which owns background goroutines).
 func (r *WorkflowRunner) RunAsync(ctx context.Context, idle IdleBranch) {
 	go r.RunWorkflows(ctx, idle)
+}
+
+// resolveCommand turns a WorkflowConfig into a shell command string.
+// If PromptFile is set, reads the file and builds a `claude --print` invocation.
+// If Command is set, uses it directly.
+func (r *WorkflowRunner) resolveCommand(wf WorkflowConfig, idle IdleBranch) (string, error) {
+	if wf.PromptFile != "" {
+		// Expand ~ in path.
+		path := wf.PromptFile
+		if strings.HasPrefix(path, "~/") {
+			home, _ := os.UserHomeDir()
+			path = home + path[1:]
+		}
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return "", fmt.Errorf("read prompt file %s: %w", path, err)
+		}
+
+		prompt := string(data)
+		// Strip YAML frontmatter if present (--- ... ---).
+		if strings.HasPrefix(prompt, "---") {
+			if end := strings.Index(prompt[3:], "---"); end != -1 {
+				prompt = strings.TrimSpace(prompt[end+6:])
+			}
+		}
+
+		// Inject context about the branch.
+		context := fmt.Sprintf("\n\n## Context\n- Repository: %s\n- Branch: %s\n- Idle since: %s\n",
+			idle.RepoPath, idle.Branch, idle.IdleSince.Format(time.RFC3339))
+		prompt += context
+
+		claudeBin := findClaudeBin()
+		// Use --print for non-interactive output, pipe prompt via stdin.
+		// Single quotes in prompt are escaped for shell safety.
+		escaped := strings.ReplaceAll(prompt, "'", "'\"'\"'")
+		return fmt.Sprintf("echo '%s' | %s --print -", escaped, claudeBin), nil
+	}
+
+	return wf.Command, nil
+}
+
+// findClaudeBin returns the path to the claude binary.
+func findClaudeBin() string {
+	if path, err := exec.LookPath("claude"); err == nil {
+		return path
+	}
+	home, _ := os.UserHomeDir()
+	for _, p := range []string{
+		home + "/.local/bin/claude",
+		home + "/go/bin/claude",
+		"/usr/local/bin/claude",
+	} {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return "claude"
 }
 
 // looksLikeDiff returns true if the output appears to be a unified diff.

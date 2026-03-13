@@ -84,6 +84,28 @@ type PatchSnapshot struct {
 	Patches []AgentPatch
 }
 
+// ResolvedIdea is the TUI-side representation of a resolved idea (side/main quest).
+type ResolvedIdea struct {
+	ID           string
+	Prompt       string
+	State        string   // queued, ready, running, completed, failed
+	Kind         string   // side, sequential
+	IsReady      bool
+	IsBlocked    bool
+	BlockedBy    []string // short IDs of blocking ideas
+	Layer        int
+	Incorporated bool
+	Branch       string
+	ErrorMsg     string
+	CreatedAt    time.Time
+}
+
+// IdeaGraphSnapshot holds the resolved idea graph for TUI rendering.
+type IdeaGraphSnapshot struct {
+	Ideas    []ResolvedIdea
+	HasCycle bool
+}
+
 // StateSnapshot is the point-in-time snapshot of all tracked state delivered to the TUI.
 // Worktrees contains one entry per DB-tracked worktree, populated by Manager.pollLoop.
 type StateSnapshot struct {
@@ -91,6 +113,7 @@ type StateSnapshot struct {
 	Worktrees []WorktreeState
 	TaskGraph TaskGraphSnapshot
 	Patches   PatchSnapshot
+	IdeaGraph IdeaGraphSnapshot
 }
 
 // StateEvent is the tea.Msg delivered to RootModel.Update() when the

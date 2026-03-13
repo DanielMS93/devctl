@@ -33,25 +33,30 @@ type RootModel struct {
 	showTaskGraph bool
 	patchPanel    panels.PatchPanel
 	showPatches   bool
-	viewer        panels.ViewerModel
-	sessionViewer panels.SessionViewer
-	logBar        panels.LogBar
+	ideaPanel      panels.IdeaPanel
+	showIdeas      bool
+	sideQuestInput panels.SideQuestInput
+	viewer         panels.ViewerModel
+	sessionViewer  panels.SessionViewer
+	logBar         panels.LogBar
 
 	stateChan <-chan StateEvent
 }
 
 // NewRootModel creates a RootModel subscribed to the given event channel.
 // patchUpdater may be nil if agent features are disabled.
-func NewRootModel(events <-chan StateEvent, patchUpdater panels.PatchStatusUpdater) RootModel {
+func NewRootModel(events <-chan StateEvent, patchUpdater panels.PatchStatusUpdater, ideaCreator panels.IdeaCreator) RootModel {
 	return RootModel{
-		leftPanel:     panels.NewRepoPanel(),
-		rightPanel:    panels.NewDetailPanel(),
-		taskGraph:     panels.NewTaskGraphPanel(),
-		patchPanel:    panels.NewPatchPanel(patchUpdater),
-		viewer:        panels.NewViewerModel(),
-		sessionViewer: panels.NewSessionViewer(),
-		logBar:        panels.NewLogBar(),
-		stateChan:     events,
+		leftPanel:      panels.NewRepoPanel(),
+		rightPanel:     panels.NewDetailPanel(),
+		taskGraph:      panels.NewTaskGraphPanel(),
+		patchPanel:     panels.NewPatchPanel(patchUpdater),
+		ideaPanel:      panels.NewIdeaPanel(),
+		sideQuestInput: panels.NewSideQuestInput(ideaCreator),
+		viewer:         panels.NewViewerModel(),
+		sessionViewer:  panels.NewSessionViewer(),
+		logBar:         panels.NewLogBar(),
+		stateChan:      events,
 	}
 }
 
@@ -71,6 +76,14 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Always let session viewer process messages when visible (handles its own key routing).
 	if m.sessionViewer.Visible {
 		consumed, cmd := m.sessionViewer.Update(msg)
+		if consumed {
+			return m, cmd
+		}
+	}
+
+	// Always let side-quest input process messages when visible.
+	if m.sideQuestInput.Visible {
+		consumed, cmd := m.sideQuestInput.Update(msg)
 		if consumed {
 			return m, cmd
 		}
@@ -99,6 +112,8 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.activePanel == PanelRight {
 				if m.showPatches {
 					m.patchPanel.MoveUp()
+				} else if m.showIdeas {
+					m.ideaPanel.MoveUp()
 				} else if m.showTaskGraph {
 					m.taskGraph.ScrollUp()
 				} else {
@@ -112,6 +127,8 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.activePanel == PanelRight {
 				if m.showPatches {
 					m.patchPanel.MoveDown()
+				} else if m.showIdeas {
+					m.ideaPanel.MoveDown()
 				} else if m.showTaskGraph {
 					m.taskGraph.ScrollDown()
 				} else {
@@ -124,6 +141,9 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.showPatches = false
 					m.logBar.SetStatus("")
 				}
+			} else if m.showIdeas {
+				m.showIdeas = false
+				m.logBar.SetStatus("")
 			} else if m.showTaskGraph {
 				m.showTaskGraph = false
 				m.logBar.SetStatus("")
@@ -169,6 +189,21 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, panels.LaunchClaudeSession(s.ID, s.ProjectPath)
 				}
 			}
+		case "s":
+			if m.activePanel == PanelRight && !m.showPatches && !m.showIdeas && !m.showTaskGraph {
+				if s := m.rightPanel.SelectedSession(); s != nil {
+					wt := m.leftPanel.SelectedWorktree()
+					repoPath := ""
+					branch := ""
+					if wt != nil {
+						repoPath = wt.RepoPath
+						branch = wt.Branch
+					}
+					cmd := m.sideQuestInput.Open(s, repoPath, branch)
+					m.logBar.SetStatus("Side-quest: type prompt, enter=create, esc=cancel")
+					return m, cmd
+				}
+			}
 		case "a":
 			if m.showPatches {
 				ctx := context.Background()
@@ -200,7 +235,17 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "t":
 			m.showTaskGraph = !m.showTaskGraph
 			if m.showTaskGraph {
+				m.showIdeas = false
 				m.logBar.SetStatus("Task graph view (t to close)")
+			} else {
+				m.logBar.SetStatus("")
+			}
+		case "i":
+			m.showIdeas = !m.showIdeas
+			if m.showIdeas {
+				m.showTaskGraph = false
+				m.showPatches = false
+				m.logBar.SetStatus("Idea pipeline (i to close)")
 			} else {
 				m.logBar.SetStatus("")
 			}
@@ -216,6 +261,19 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+	case tea.MouseClickMsg:
+		mouse := msg.Mouse()
+		leftWidth := m.width / 4
+		if leftWidth < 20 {
+			leftWidth = 20
+		}
+		if mouse.X < leftWidth {
+			m.activePanel = PanelLeft
+		} else {
+			m.activePanel = PanelRight
+		}
+		m.propagateSizes()
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -226,6 +284,7 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.rightPanel.SetWorktree(m.leftPanel.SelectedWorktree())
 		m.taskGraph.SetGraph(msg.Snapshot.TaskGraph)
 		m.patchPanel.SetPatches(msg.Snapshot.Patches)
+		m.ideaPanel.SetGraph(msg.Snapshot.IdeaGraph)
 		// Re-arm: exactly one goroutine blocks on the channel at a time.
 		cmds = append(cmds, m.subscribeToStateEvents())
 
@@ -239,6 +298,13 @@ func (m RootModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case panels.EditorFinishedMsg:
 		if msg.Err != nil {
 			slog.Warn("editor exited with error", "err", msg.Err)
+		}
+
+	case panels.SideQuestCreatedMsg:
+		if msg.IdeaID != "" {
+			m.logBar.SetStatus(fmt.Sprintf("Side-quest %s created: %s", msg.IdeaID, msg.Prompt))
+		} else {
+			m.logBar.SetStatus("Side-quest queued: " + msg.Prompt)
 		}
 
 	case panels.ClaudeLaunchedMsg:
@@ -270,6 +336,8 @@ func (m RootModel) View() tea.View {
 		right = m.viewer.View()
 	} else if m.showPatches {
 		right = m.patchPanel.View()
+	} else if m.showIdeas {
+		right = m.ideaPanel.View()
 	} else if m.showTaskGraph {
 		right = m.taskGraph.View()
 	} else {
@@ -277,10 +345,16 @@ func (m RootModel) View() tea.View {
 	}
 
 	body := lipgloss.JoinHorizontal(lipgloss.Top, left, right)
-	full := lipgloss.JoinVertical(lipgloss.Left, body, m.logBar.View())
+	var full string
+	if m.sideQuestInput.Visible {
+		full = m.sideQuestInput.View()
+	} else {
+		full = lipgloss.JoinVertical(lipgloss.Left, body, m.logBar.View())
+	}
 
 	v := tea.NewView(full)
-	v.AltScreen = true // v2: declarative; do NOT use tea.EnterAltScreen command
+	v.AltScreen = true                      // v2: declarative; do NOT use tea.EnterAltScreen command
+	v.MouseMode = tea.MouseModeCellMotion   // enable mouse click/release/wheel events
 	return v
 }
 
@@ -313,6 +387,9 @@ func (m *RootModel) propagateSizes() {
 	m.taskGraph.SetFocused(m.activePanel == PanelRight && m.showTaskGraph)
 	m.patchPanel.SetSize(rightWidth, bodyHeight)
 	m.patchPanel.SetFocused(m.activePanel == PanelRight && m.showPatches)
+	m.ideaPanel.SetSize(rightWidth, bodyHeight)
+	m.ideaPanel.SetFocused(m.activePanel == PanelRight && m.showIdeas)
+	m.sideQuestInput.SetSize(m.width, m.height)
 	m.viewer.SetSize(rightWidth, bodyHeight)
 	m.sessionViewer.SetSize(rightWidth, bodyHeight)
 	m.logBar.SetWidth(m.width)

@@ -257,6 +257,9 @@ func runAgentConfig() error {
 		if wf.Command != "" {
 			fmt.Printf("    command: %s\n", wf.Command)
 		}
+		if wf.PromptFile != "" {
+			fmt.Printf("    prompt_file: %s\n", wf.PromptFile)
+		}
 	}
 
 	if len(cfg.DisabledRepos) > 0 {
