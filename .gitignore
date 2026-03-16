@@ -12,3 +12,4 @@
 
 # Go build cache
 *.test
+.env
