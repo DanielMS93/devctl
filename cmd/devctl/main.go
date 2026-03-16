@@ -11,10 +11,12 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"github.com/danielmiessler/devctl/internal/dashboard"
-	"github.com/danielmiessler/devctl/pkg/storage"
-	"github.com/danielmiessler/devctl/pkg/tui"
+	"github.com/DanielMS93/devctl/internal/dashboard"
+	"github.com/DanielMS93/devctl/pkg/storage"
+	"github.com/DanielMS93/devctl/pkg/tui"
 )
+
+var version = "dev"
 
 func main() {
 	// Root context: cancelled on exit to shut down all goroutines cleanly.
@@ -77,6 +79,7 @@ func main() {
 		Short: "Developer control plane for repos, worktrees, sessions, and tasks",
 		Long: `devctl gives you one place to see everything happening across all your
 repos and worktrees — no lost sessions, no forgotten branches, no missed follow-ups.`,
+		Version:      version,
 		SilenceUsage: true,
 		// Running bare `devctl` opens the dashboard directly.
 		RunE: func(cmd *cobra.Command, args []string) error {

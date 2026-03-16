@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/danielmiessler/devctl/internal/git"
+	"github.com/DanielMS93/devctl/internal/git"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/spf13/cobra"

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/danielmiessler/devctl/pkg/tui/tuimsg"
+	"github.com/DanielMS93/devctl/pkg/tui/tuimsg"
 )
 
 func defaultTestConfig() AgentConfig {

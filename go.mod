@@ -1,4 +1,4 @@
-module github.com/danielmiessler/devctl
+module github.com/DanielMS93/devctl
 
 go 1.25.0
 

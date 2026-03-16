@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/danielmiessler/devctl/pkg/storage"
+	"github.com/DanielMS93/devctl/pkg/storage"
 )
 
 func testDB(t *testing.T) *Store {

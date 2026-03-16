@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 
-	"github.com/danielmiessler/devctl/internal/dependency"
-	"github.com/danielmiessler/devctl/internal/task"
+	"github.com/DanielMS93/devctl/internal/dependency"
+	"github.com/DanielMS93/devctl/internal/task"
 	"github.com/jmoiron/sqlx"
 	"github.com/spf13/cobra"
 )

@@ -1,0 +1,36 @@
+version: 2
+
+builds:
+  - main: ./cmd/devctl/
+    binary: devctl
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - formats: [tar.gz]
+    name_template: "devctl_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+brews:
+  - repository:
+      owner: DanielMS93
+      name: homebrew-tap
+    homepage: https://github.com/DanielMS93/devctl
+    description: Developer control plane for repos, worktrees, sessions, and tasks
+    install: |
+      bin.install "devctl"
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"

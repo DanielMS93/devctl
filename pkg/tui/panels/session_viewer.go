@@ -8,7 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/bubbles/v2/viewport"
 	"charm.land/lipgloss/v2"
-	"github.com/danielmiessler/devctl/internal/claude"
+	"github.com/DanielMS93/devctl/internal/claude"
 )
 
 // sessionViewerEntryMsg delivers a new JSONL entry from the tailer to the TUI.

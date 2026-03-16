@@ -7,7 +7,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/danielmiessler/devctl/pkg/tui/tuimsg"
+	"github.com/DanielMS93/devctl/pkg/tui/tuimsg"
 )
 
 // IdeaCreator is the interface for creating ideas from the TUI.

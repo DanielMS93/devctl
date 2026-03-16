@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/danielmiessler/devctl/internal/dashboard"
+	"github.com/DanielMS93/devctl/internal/dashboard"
 	"github.com/stretchr/testify/require"
 )
 

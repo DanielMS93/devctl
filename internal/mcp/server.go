@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/danielmiessler/devctl/internal/claude"
-	"github.com/danielmiessler/devctl/internal/idea"
+	"github.com/DanielMS93/devctl/internal/claude"
+	"github.com/DanielMS93/devctl/internal/idea"
 	"github.com/jmoiron/sqlx"
 )
 

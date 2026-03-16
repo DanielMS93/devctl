@@ -8,8 +8,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/danielmiessler/devctl/internal/claude"
-	"github.com/danielmiessler/devctl/pkg/tui/panels"
+	"github.com/DanielMS93/devctl/internal/claude"
+	"github.com/DanielMS93/devctl/pkg/tui/panels"
 )
 
 // PanelID identifies which panel is active.

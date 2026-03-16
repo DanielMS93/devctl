@@ -3,7 +3,7 @@ package task
 import (
 	"testing"
 
-	"github.com/danielmiessler/devctl/internal/dependency"
+	"github.com/DanielMS93/devctl/internal/dependency"
 )
 
 func TestResolve(t *testing.T) {

@@ -3,7 +3,7 @@ package task
 import (
 	"fmt"
 
-	"github.com/danielmiessler/devctl/internal/dependency"
+	"github.com/DanielMS93/devctl/internal/dependency"
 )
 
 // ResolvedTask holds a task along with its computed DAG status.

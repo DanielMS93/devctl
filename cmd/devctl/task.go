@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/danielmiessler/devctl/internal/task"
+	"github.com/DanielMS93/devctl/internal/task"
 	"github.com/jmoiron/sqlx"
 	"github.com/spf13/cobra"
 )

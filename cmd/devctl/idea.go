@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/danielmiessler/devctl/internal/idea"
+	"github.com/DanielMS93/devctl/internal/idea"
 	"github.com/jmoiron/sqlx"
 	"github.com/spf13/cobra"
 )

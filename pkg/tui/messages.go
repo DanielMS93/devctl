@@ -4,8 +4,8 @@
 package tui
 
 import (
-	"github.com/danielmiessler/devctl/pkg/tui/panels"
-	"github.com/danielmiessler/devctl/pkg/tui/tuimsg"
+	"github.com/DanielMS93/devctl/pkg/tui/panels"
+	"github.com/DanielMS93/devctl/pkg/tui/tuimsg"
 )
 
 // StateSnapshot is the point-in-time snapshot of all tracked state.

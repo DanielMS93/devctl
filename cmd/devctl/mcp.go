@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/danielmiessler/devctl/internal/mcp"
+	"github.com/DanielMS93/devctl/internal/mcp"
 	"github.com/jmoiron/sqlx"
 	"github.com/spf13/cobra"
 )

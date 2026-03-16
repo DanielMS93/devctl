@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/danielmiessler/devctl/pkg/tui/tuimsg"
+	"github.com/DanielMS93/devctl/pkg/tui/tuimsg"
 )
 
 // IdleBranch represents a branch that has been idle longer than the configured threshold.

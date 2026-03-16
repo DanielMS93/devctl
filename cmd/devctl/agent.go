@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/danielmiessler/devctl/internal/agent"
+	"github.com/DanielMS93/devctl/internal/agent"
 	"github.com/jmoiron/sqlx"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"

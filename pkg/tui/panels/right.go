@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
-	"github.com/danielmiessler/devctl/pkg/tui/tuimsg"
+	"github.com/DanielMS93/devctl/pkg/tui/tuimsg"
 )
 
 // DetailPanel shows Claude sessions and changed files for the selected worktree.

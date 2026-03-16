@@ -12,7 +12,7 @@ import (
 	"charm.land/bubbles/v2/viewport"
 	"charm.land/lipgloss/v2"
 	"github.com/alecthomas/chroma/v2/quick"
-	"github.com/danielmiessler/devctl/internal/git"
+	"github.com/DanielMS93/devctl/internal/git"
 	"github.com/spf13/viper"
 )
 

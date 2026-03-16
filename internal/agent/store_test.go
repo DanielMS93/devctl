@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/danielmiessler/devctl/pkg/storage"
+	"github.com/DanielMS93/devctl/pkg/storage"
 	"github.com/jmoiron/sqlx"
 )
 
