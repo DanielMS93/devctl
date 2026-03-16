@@ -227,9 +227,36 @@ func ensureRepo(ctx context.Context, db *sqlx.DB, absPath string) (string, error
 	var id string
 	err := db.QueryRowContext(ctx, `SELECT id FROM repos WHERE path = ?`, absPath).Scan(&id)
 	if err == nil {
-		return id, nil // already tracked
+		// Repo exists — still ensure it has a worktree entry.
+		ensureWorktree(ctx, db, id, absPath)
+		return id, nil
 	}
-	return insertRepo(ctx, db, absPath)
+	repoID, err := insertRepo(ctx, db, absPath)
+	if err != nil {
+		return "", err
+	}
+	// Also create a worktree entry for the repo's main working directory
+	// so it appears in the TUI dashboard.
+	ensureWorktree(ctx, db, repoID, absPath)
+	return repoID, nil
+}
+
+// ensureWorktree creates a worktree row for a path if one doesn't already exist.
+func ensureWorktree(ctx context.Context, db *sqlx.DB, repoID, path string) {
+	var existing string
+	err := db.QueryRowContext(ctx, `SELECT id FROM worktrees WHERE path = ?`, path).Scan(&existing)
+	if err == nil {
+		return // already exists
+	}
+	now := time.Now().Unix()
+	branch := "main" // default; will be corrected by the next poll cycle
+	if b, err := git.CurrentBranch(ctx, path); err == nil && b != "" {
+		branch = b
+	}
+	_, _ = db.ExecContext(ctx, `
+		INSERT INTO worktrees (id, repo_id, path, branch, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, uuid.New().String(), repoID, path, branch, now, now)
 }
 
 // sanitizeBranch converts a branch name to a filesystem-safe directory name.

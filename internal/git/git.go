@@ -27,6 +27,16 @@ func run(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	return out, nil
 }
 
+// CurrentBranch returns the current branch name for the given repo path.
+// Returns empty string if detached HEAD or on error.
+func CurrentBranch(ctx context.Context, repoPath string) (string, error) {
+	out, err := run(ctx, repoPath, "branch", "--show-current")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 // LastCommitTime returns the time of the most recent commit on the given branch.
 // Returns zero time if the branch has no commits or the ref is not found.
 func LastCommitTime(ctx context.Context, repoPath, branch string) (time.Time, error) {
